@@ -1,6 +1,14 @@
 from dataclasses import dataclass
 from typing import AsyncGenerator, Literal, Protocol
 
+from ..sessions import Message
+
+@dataclass
+class ToolDefinition:
+    """A standardized tool definition."""
+    name: str
+    description: str
+    parameters: dict
 
 @dataclass
 class ResponseChunk:
@@ -22,6 +30,7 @@ class ToolCallChunk:
 
     name: str
     arguments: dict
+    id: str | None = None
 
 
 @dataclass
@@ -59,13 +68,13 @@ class Provider(Protocol):
     """Protocol for async LLM providers."""
 
     def chat(
-        self, messages: list[dict], tools: list[dict] | None = None
+        self, messages: list[Message], tools: list[ToolDefinition] | None = None
     ) -> AsyncGenerator[StreamingChunk, None]:
         """Stream response chunks asynchronously.
 
         Args:
-            messages: List of message dicts with 'role' and 'content'
-            tools: Optional list of tool schemas
+            messages: List of current conversation messages
+            tools: Optional list of tool definitions
 
         Yields:
             StreamingChunk: ResponseChunk, ThinkingChunk, ToolCallChunk,

@@ -41,37 +41,17 @@ class ContextManager:
         self.messages.append(message)
         return message
 
-    def append_tool(self, tool_name: str, content: str) -> Message:
+    def append_tool(self, tool_name: str, content: str, tool_call_id: str | None = None) -> Message:
         message: Message = {
             "role": "tool",
             "tool_name": tool_name,
             "content": content,
             "timestamp": self._now_iso(),
         }
+        if tool_call_id:
+            message["tool_call_id"] = tool_call_id
         self.messages.append(message)
         return message
-
-    def as_provider_messages(self) -> list[dict[str, Any]]:
-        provider_messages: list[dict[str, Any]] = []
-        for message in self.messages:
-            provider_message: dict[str, Any] = {
-                "role": message["role"],
-                "content": message.get("content", ""),
-            }
-            thinking = message.get("thinking")
-            if thinking:
-                provider_message["thinking"] = thinking
-
-            tool_calls = message.get("tool_calls")
-            if tool_calls:
-                provider_message["tool_calls"] = tool_calls
-
-            tool_name = message.get("tool_name")
-            if tool_name:
-                provider_message["tool_name"] = tool_name
-
-            provider_messages.append(provider_message)
-        return provider_messages
 
     def _now_iso(self) -> str:
         return datetime.now(timezone.utc).replace(microsecond=0).isoformat()

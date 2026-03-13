@@ -39,17 +39,14 @@ class Tool(ABC):
         ...
 
     @property
-    def schema(self) -> dict:
-        """Get OpenAI-compatible tool schema."""
-        return {
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": self.parameters,
-            },
-        }
-
+    def definition(self) -> "ToolDefinition":
+        """Get the standardized tool definition."""
+        from .providers.base import ToolDefinition
+        return ToolDefinition(
+            name=self.name,
+            description=self.description,
+            parameters=self.parameters,
+        )
 
 class ToolsManager:
     def __init__(self, autoload: bool = True, tools_dir: Path | None = None):
@@ -101,8 +98,8 @@ class ToolsManager:
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
 
-    def get_schemas(self) -> list[dict]:
-        return [tool.schema for tool in self._tools.values()]
+    def get_definitions(self) -> list["ToolDefinition"]:
+        return [tool.definition for tool in self._tools.values()]
 
     async def execute(self, name: str, args: dict) -> str:
         tool = self.get(name)

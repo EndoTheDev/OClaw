@@ -13,6 +13,7 @@ class AgentWorker:
         self.timeout = timeout
         self._executor: ProcessPoolExecutor | None = None
         self._manager: Manager | None = None  # type: ignore
+        self.pending_inputs = {}
 
     def start(self) -> None:
         self.logger.info("worker.start", num_processes=self.num_processes)
@@ -59,52 +60,61 @@ class AgentWorker:
         )
 
         result_queue = self._manager.Queue()
+        input_queue = self._manager.Queue()
+        
+        if request_id:
+            self.pending_inputs[request_id] = input_queue
 
         future = self._executor.submit(
             _execute_agent,
             message,
             result_queue,
+            input_queue,
             request_id,
         )
 
-        while True:
-            try:
-                event = await self._queue_get_async(result_queue)
-                if event.get("type") == "done":
-                    try:
-                        future.result(timeout=1)
-                    except Exception as e:
+        try:
+            while True:
+                try:
+                    event = await self._queue_get_async(result_queue)
+                    if event.get("type") == "done":
+                        try:
+                            future.result(timeout=1)
+                        except Exception as e:
+                            self.logger.error(
+                                "worker.run_agent.future_error",
+                                request_id=request_id,
+                                error=str(e),
+                            )
+                            yield {"type": "error", "message": str(e)}
+                        self.logger.info("worker.run_agent.done", request_id=request_id)
+                        yield event
+                        break
+                    if event.get("type") == "error":
                         self.logger.error(
-                            "worker.run_agent.future_error",
+                            "worker.run_agent.event_error",
                             request_id=request_id,
-                            error=str(e),
+                            payload=event,
                         )
-                        yield {"type": "error", "message": str(e)}
-                    self.logger.info("worker.run_agent.done", request_id=request_id)
                     yield event
-                    break
-                if event.get("type") == "error":
+                except Exception as e:
                     self.logger.error(
-                        "worker.run_agent.event_error",
+                        "worker.run_agent.communication_error",
                         request_id=request_id,
-                        payload=event,
+                        error=str(e),
                     )
-                yield event
-            except Exception as e:
-                self.logger.error(
-                    "worker.run_agent.communication_error",
-                    request_id=request_id,
-                    error=str(e),
-                )
-                yield {"type": "error", "message": f"Worker communication error: {e}"}
-                break
+                    yield {"type": "error", "message": f"Worker communication error: {e}"}
+                    break
+        finally:
+            if request_id and request_id in self.pending_inputs:
+                del self.pending_inputs[request_id]
 
     async def _queue_get_async(self, queue):
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, queue.get)
 
 
-def _execute_agent(message: str, result_queue: Queue, request_id: str | None) -> None:
+def _execute_agent(message: str, result_queue: Queue, input_queue: Queue, request_id: str | None) -> None:
     async def run_async():
         from core.agent import Agent
         from core.logger import Logger
@@ -118,6 +128,9 @@ def _execute_agent(message: str, result_queue: Queue, request_id: str | None) ->
         if config.provider == "openai":
             from core.providers.openai import OpenAIProvider
             provider = OpenAIProvider()
+        elif config.provider == "anthropic":
+            from core.providers.anthropic import AnthropicProvider
+            provider = AnthropicProvider()
         elif config.provider == "ollama":
             from core.providers.ollama import OllamaProvider
             provider = OllamaProvider()
@@ -126,7 +139,7 @@ def _execute_agent(message: str, result_queue: Queue, request_id: str | None) ->
 
         agent = Agent(provider, tools)
 
-        async for event in agent.stream(message, request_id=request_id):
+        async for event in agent.stream(message, request_id=request_id, input_queue=input_queue):
             result_queue.put(event)
 
     try:

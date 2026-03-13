@@ -3,6 +3,7 @@ import httpx
 from typing import AsyncGenerator
 
 from ..logger import Logger
+from ..sessions import Message
 from .base import (
     DoneChunk,
     ErrorChunk,
@@ -11,6 +12,7 @@ from .base import (
     StreamingChunk,
     ThinkingChunk,
     ToolCallChunk,
+    ToolDefinition,
 )
 
 
@@ -29,43 +31,114 @@ class AnthropicProvider:
             "provider.anthropic.init", base_url=self.base_url, model=self.model,
         )
 
-    def _convert_openai_tools_to_anthropic(self, openai_tools: list[dict] | None) -> list[dict] | None:
-        if not openai_tools:
+    def _convert_tools_to_anthropic(self, tools: list[ToolDefinition] | None) -> list[dict] | None:
+        if not tools:
             return None
         
         anthropic_tools = []
-        for tool in openai_tools:
-            if tool["type"] != "function":
-                continue
-            
-            func = tool["function"]
+        for tool in tools:
             anthropic_tool = {
-                "name": func["name"],
-                "description": func.get("description", ""),
+                "name": tool.name,
+                "description": tool.description,
                 "input_schema": {
                     "type": "object",
-                    "properties": func.get("parameters", {}).get("properties", {}),
-                    "required": func.get("parameters", {}).get("required", []),
+                    "properties": tool.parameters.get("properties", {}),
+                    "required": tool.parameters.get("required", []),
                 },
             }
             anthropic_tools.append(anthropic_tool)
         
         return anthropic_tools if anthropic_tools else None
 
+    def _convert_messages_to_anthropic(self, messages: list[Message]) -> list[dict]:
+        """Convert standard message format to Anthropic's format."""
+        if not messages:
+            return []
+            
+        anthropic_messages = []
+        for msg in messages:
+            role = msg["role"]
+            
+            # Skip system messages as they are handled separately in Anthropic
+            if role == "system":
+                continue
+                
+            content = msg.get("content", "")
+            
+            if role == "tool":
+                # Convert tool output to Anthropic's user message format 
+                block = {
+                    "type": "tool_result",
+                    "tool_use_id": msg.get("tool_call_id", ""),
+                    "content": content
+                }
+                # If last message is user, append block instead of new message
+                if anthropic_messages and anthropic_messages[-1]["role"] == "user":
+                    if isinstance(anthropic_messages[-1]["content"], list):
+                        anthropic_messages[-1]["content"].append(block)
+                    else:
+                        anthropic_messages[-1]["content"] = [
+                            {"type": "text", "text": anthropic_messages[-1]["content"]},
+                            block
+                        ]
+                else:
+                    anthropic_messages.append({"role": "user", "content": [block]})
+                continue
+                
+            if role == "assistant" and msg.get("tool_calls"):
+                blocks = []
+                if content:
+                    blocks.append({"type": "text", "text": content})
+                    
+                import json
+                for tool_call in msg["tool_calls"]:
+                    func = tool_call.get("function", {})
+                    args = func.get("arguments", {})
+                    # If somehow arguments are already a string, parse them back
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except json.JSONDecodeError:
+                            args = {}
+                            
+                    blocks.append({
+                        "type": "tool_use",
+                        "id": tool_call.get("id", ""),
+                        "name": func.get("name", ""),
+                        "input": args
+                    })
+                    
+                anthropic_messages.append({"role": "assistant", "content": blocks})
+                continue
+                
+            # Default text messages
+            anthropic_messages.append({"role": role, "content": content})
+            
+        return anthropic_messages
+
     async def chat(
-        self, messages: list[dict], tools: list[dict] | None = None
+        self, messages: list[Message], tools: list[ToolDefinition] | None = None
     ) -> AsyncGenerator[StreamingChunk, None]:
 
         url = f"{self.base_url}/messages"
 
+        # Extract system prompt if present
+        system_prompt = next((m["content"] for m in messages if m["role"] == "system"), None)
+        
+        # Convert messages to Anthropic format
+        anthropic_messages = self._convert_messages_to_anthropic(messages)
+
         payload = {
             "model": self.model,
-            "messages": messages,
+            "messages": anthropic_messages,
             "max_tokens": 4096,
             "stream": True,
         }
+        
+        if system_prompt:
+            payload["system"] = system_prompt
 
-        anthropic_tools = self._convert_openai_tools_to_anthropic(tools)
+        anthropic_tools = self._convert_tools_to_anthropic(tools)
         if anthropic_tools:
             payload["tools"] = anthropic_tools
 
@@ -90,14 +163,17 @@ class AnthropicProvider:
 
                 response.raise_for_status()
                 accumulated_tool_input = {}
+                accumulated_tool_ids = {}
                 current_tool_name = ""
 
                 async for line in response.aiter_lines():
-                    if not line:
+                    if not line or not line.startswith("data:"):
                         continue
+                    
+                    data_str = line.removeprefix("data: ").strip()
 
                     try:
-                        data = json.loads(line)
+                        data = json.loads(data_str)
                     except json.JSONDecodeError:
                         continue
 
@@ -110,6 +186,7 @@ class AnthropicProvider:
                         if block_type == "tool_use":
                             current_tool_name = content_block.get("name", "")
                             accumulated_tool_input[current_tool_name] = ""
+                            accumulated_tool_ids[current_tool_name] = content_block.get("id")
 
                     elif event_type == "content_block_delta":
                         delta = data.get("delta", {})
@@ -127,7 +204,7 @@ class AnthropicProvider:
                     elif event_type == "content_block_stop":
                         if current_tool_name and current_tool_name in accumulated_tool_input:
                             try:
-                                args_dict = json.loads(accumulated_tool_input[current_tool_name])
+                                args_dict = json.loads(accumulated_tool_input[current_tool_name]) if accumulated_tool_input[current_tool_name] else {}
                             except json.JSONDecodeError as e:
                                 self.logger.error(
                                     "provider.anthropic.tool_call.json_error",
@@ -139,6 +216,7 @@ class AnthropicProvider:
                             yield ToolCallChunk(
                                 name=current_tool_name,
                                 arguments=args_dict,
+                                id=accumulated_tool_ids.get(current_tool_name, ""),
                             )
                             current_tool_name = ""
 

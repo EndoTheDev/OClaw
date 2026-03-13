@@ -18,11 +18,10 @@ class ToolCallFunction(TypedDict):
     name: str
     arguments: dict[str, Any]
 
-
-class ToolCall(TypedDict):
+class ToolCall(TypedDict, total=False):
+    id: str
     type: Literal["function"]
     function: ToolCallFunction
-
 
 class Message(TypedDict):
     role: Role
@@ -30,6 +29,7 @@ class Message(TypedDict):
     thinking: NotRequired[str]
     tool_calls: NotRequired[list[ToolCall]]
     tool_name: NotRequired[str]
+    tool_call_id: NotRequired[str]
     timestamp: str
 
 
