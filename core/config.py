@@ -13,6 +13,8 @@ class Config:
     ollama_host: str = "http://localhost:11434"
     openai_host: str = "https://api.openai.com/v1"
     openai_api_key: str | None = None
+    anthropic_host: str = "https://api.anthropic.com/v1"
+    anthropic_api_key: str | None = None
     model: str | None = None
     max_iterations: int = 5
     server_host: str = "0.0.0.0"
@@ -25,6 +27,8 @@ class Config:
         "OLLAMA_HOST": "ollama_host",
         "OPENAI_HOST": "openai_host",
         "OPENAI_API_KEY": "openai_api_key",
+        "ANTHROPIC_HOST": "anthropic_host",
+        "ANTHROPIC_API_KEY": "anthropic_api_key",
         "OLLAMA_MODEL": "model",
         "MAX_ITERATIONS": "max_iterations",
         "SERVER_HOST": "server_host",
@@ -38,6 +42,8 @@ class Config:
         "ollama_host",
         "openai_host",
         "openai_api_key",
+        "anthropic_host",
+        "anthropic_api_key",
         "model",
         "max_iterations",
         "server_host",

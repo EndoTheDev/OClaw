@@ -3,6 +3,8 @@
   "ollama_host": "http://localhost:11434",
   "openai_host": "https://api.openai.com/v1",
   "openai_api_key": "your_openai_api_key",
+  "anthropic_host": "https://api.anthropic.com/v1",
+  "anthropic_api_key": "your_anthropic_api_key",
   "model": "glm-5:cloud",
   "max_iterations": 5,
   "server_host": "0.0.0.0",
