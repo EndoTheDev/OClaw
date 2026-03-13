@@ -3,7 +3,7 @@
 OClaw is a Python AI agent runtime with:
 
 - FastAPI streaming backend (SSE)
-- Multi-provider support (`ollama`, `openai`)
+- Multi-provider support (`ollama`, `openai`, `anthropic`)
 - Interactive CLI client
 - Built-in tool calling (`read_file`, `write_file`, `execute_shell`)
 
@@ -13,6 +13,7 @@ OClaw is a Python AI agent runtime with:
 - [uv](https://docs.astral.sh/uv/)
 - For Ollama mode: reachable Ollama server + installed model
 - For OpenAI mode: API key + model access
+- For Anthropic mode: API key + model access
 
 ## Quick Start
 
@@ -46,7 +47,16 @@ OPENAI_API_KEY=your_api_key
 OLLAMA_MODEL=gpt-4o-mini
 ```
 
-> Note: `OLLAMA_MODEL` is currently used as the model field for both providers.
+#### Anthropic
+
+```env
+PROVIDER=anthropic
+ANTHROPIC_HOST=https://api.anthropic.com/v1
+ANTHROPIC_API_KEY=your_api_key
+OLLAMA_MODEL=claude-3-5-sonnet-20241022
+```
+
+> Note: `OLLAMA_MODEL` is currently used as the model field for all providers.
 
 ### 3) Run backend
 
@@ -98,6 +108,7 @@ Implemented:
 - Streaming backend + CLI
 - Ollama provider
 - OpenAI provider
+- Anthropic provider
 - Tool autoloading
 - Session persistence
 - Structured logging
