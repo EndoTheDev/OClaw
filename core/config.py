@@ -50,7 +50,7 @@ class Config:
                     file_config = json.load(f)
                     values.update(cls._normalize_keys(file_config))
                 logger.info("config.load.file.success", path=str(config_file))
-            except json.JSONDecodeError, IOError:
+            except (json.JSONDecodeError, IOError):
                 logger.error("config.load.file.failed", path=str(config_file))
                 pass
 
@@ -122,7 +122,7 @@ class Config:
             if key in values and isinstance(values[key], str):
                 try:
                     values[key] = converter(values[key])
-                except ValueError, TypeError:
+                except (ValueError, TypeError):
                     pass
 
         return values
