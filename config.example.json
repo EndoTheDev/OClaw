@@ -1,0 +1,9 @@
+{
+  "ollama_host": "http://host.docker.internal:11434",
+  "model": "glm-5:cloud",
+  "max_iterations": 5,
+  "server_host": "0.0.0.0",
+  "server_port": 8000,
+  "num_workers": 4,
+  "worker_timeout": 300
+}

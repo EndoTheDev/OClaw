@@ -9,7 +9,10 @@ from .logger import Logger
 
 @dataclass
 class Config:
+    provider: str = "ollama"
     ollama_host: str = "http://localhost:11434"
+    openai_host: str = "https://api.openai.com/v1"
+    openai_api_key: str | None = None
     model: str | None = None
     max_iterations: int = 5
     server_host: str = "0.0.0.0"
@@ -18,7 +21,10 @@ class Config:
     worker_timeout: int = 300
 
     _ENV_MAPPING = {
+        "PROVIDER": "provider",
         "OLLAMA_HOST": "ollama_host",
+        "OPENAI_HOST": "openai_host",
+        "OPENAI_API_KEY": "openai_api_key",
         "OLLAMA_MODEL": "model",
         "MAX_ITERATIONS": "max_iterations",
         "SERVER_HOST": "server_host",
@@ -28,7 +34,10 @@ class Config:
     }
 
     _FIELD_NAMES = {
+        "provider",
         "ollama_host",
+        "openai_host",
+        "openai_api_key",
         "model",
         "max_iterations",
         "server_host",
@@ -89,7 +98,9 @@ class Config:
         config.validate()
         logger.info(
             "config.load.done",
+            provider=config.provider,
             ollama_host=config.ollama_host,
+            openai_host=config.openai_host,
             model=config.model,
             max_iterations=config.max_iterations,
             server_host=config.server_host,

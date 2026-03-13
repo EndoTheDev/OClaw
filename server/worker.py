@@ -108,12 +108,20 @@ def _execute_agent(message: str, result_queue: Queue, request_id: str | None) ->
     async def run_async():
         from core.agent import Agent
         from core.logger import Logger
-        from core.providers.ollama import OllamaProvider
+        from core.config import Config
         from core.tools import ToolsManager
 
         logger = Logger.get("worker.py")
         logger.info("worker.execute_agent.start", request_id=request_id)
-        provider = OllamaProvider()
+        
+        config = Config.load()
+        if config.provider == "openai":
+            from core.providers.openai import OpenAIProvider
+            provider = OpenAIProvider()
+        elif config.provider == "ollama":
+            from core.providers.ollama import OllamaProvider
+            provider = OllamaProvider()
+            
         tools = ToolsManager()
 
         agent = Agent(provider, tools)

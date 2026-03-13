@@ -12,3 +12,6 @@ wheels/
 .sessions/*
 .sisyphus/*
 logs/*
+
+.env
+config.json

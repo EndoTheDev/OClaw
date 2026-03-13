@@ -52,7 +52,9 @@ class AgentGateway:
                 "status": "healthy",
                 "workers": self.num_workers,
                 "timeout": self.timeout,
+                "provider": config.provider,
                 "ollama_host": config.ollama_host,
+                "openai_host": config.openai_host,
                 "model": config.model,
             }
 
