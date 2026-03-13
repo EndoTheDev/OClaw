@@ -3,6 +3,7 @@ import httpx
 from typing import AsyncGenerator
 
 from ..logger import Logger
+from ..sessions import Message
 from .base import (
     DoneChunk,
     ErrorChunk,
@@ -11,6 +12,7 @@ from .base import (
     StreamingChunk,
     ThinkingChunk,
     ToolCallChunk,
+    ToolDefinition,
 )
 
 
@@ -29,20 +31,73 @@ class OpenAIProvider:
             "provider.openai.init", base_url=self.base_url, model=self.model,
         )
 
+    def _convert_tools(self, tools: list[ToolDefinition] | None) -> list[dict] | None:
+        if not tools:
+            return None
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters,
+                },
+            }
+            for tool in tools
+        ]
+
+    def _convert_messages(self, messages: list[Message]) -> list[dict]:
+        provider_messages = []
+        for msg in messages:
+            provider_message = {
+                "role": msg["role"],
+                "content": msg.get("content", ""),
+            }
+            
+            if "thinking" in msg:
+                provider_message["thinking"] = msg["thinking"]
+                
+            if "tool_calls" in msg and msg["tool_calls"]:
+                formatted_tool_calls = []
+                for tc in msg["tool_calls"]:
+                    formatted_tc = {
+                        "type": "function",
+                        "function": {
+                            "name": tc["function"]["name"],
+                            "arguments": json.dumps(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], dict) else tc["function"]["arguments"]
+                        }
+                    }
+                    if "id" in tc:
+                        formatted_tc["id"] = tc["id"]
+                    formatted_tool_calls.append(formatted_tc)
+                provider_message["tool_calls"] = formatted_tool_calls
+                
+            if msg["role"] == "tool":
+                if "tool_name" in msg:
+                    provider_message["name"] = msg["tool_name"]
+                if "tool_call_id" in msg:
+                    provider_message["tool_call_id"] = msg["tool_call_id"]
+                    
+            provider_messages.append(provider_message)
+        return provider_messages
+
     async def chat(
-        self, messages: list[dict], tools: list[dict] | None = None
+        self, messages: list[Message], tools: list[ToolDefinition] | None = None
     ) -> AsyncGenerator[StreamingChunk, None]:
 
         url = f"{self.base_url}/chat/completions"
 
+        openai_messages = self._convert_messages(messages)
+
         payload = {
             "model": self.model,
-            "messages": messages,
+            "messages": openai_messages,
             "stream": True,
         }
 
-        if tools:
-            payload["tools"] = tools
+        openai_tools = self._convert_tools(tools)
+        if openai_tools:
+            payload["tools"] = openai_tools
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -80,6 +135,7 @@ class OpenAIProvider:
                                 self.logger.error("provider.openai.tool_call.json_error", error=str(e), args=tc_data["arguments"])
                                 args_dict = {}
                             yield ToolCallChunk(
+                                id=tc_data.get("id", ""),
                                 name=tc_data["name"],
                                 arguments=args_dict,
                             )
@@ -107,7 +163,10 @@ class OpenAIProvider:
                         for tc in tool_calls:
                             idx = tc.get("index")
                             if idx not in accumulated_tool_calls:
-                                accumulated_tool_calls[idx] = {"name": "", "arguments": ""}
+                                accumulated_tool_calls[idx] = {"name": "", "arguments": "", "id": tc.get("id", "")}
+                            else:
+                                if "id" in tc and tc["id"]:
+                                    accumulated_tool_calls[idx]["id"] = tc["id"]
                             
                             func = tc.get("function", {})
                             if "name" in func:

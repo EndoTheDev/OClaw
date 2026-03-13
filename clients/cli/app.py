@@ -77,6 +77,22 @@ class OClawCLI:
                     content = self._extract_content(data)
                     event_type = data.get("type", "")
 
+                    if event_type == "permission_request":
+                        name = data.get("name")
+                        args = data.get("args")
+                        request_id = data.get("request_id")
+                        
+                        formatted_args = self._format_args(args)
+                        print(f"\n\nSystem: The agent wants to run the tool '{name}({formatted_args})'.")
+                        ans = input("Allow execution? (y/n): ")
+                        
+                        async with httpx.AsyncClient() as permit_client:
+                            await permit_client.post(
+                                f"{self.base_url}/chat/permit",
+                                json={"request_id": request_id, "approved": ans.lower().startswith('y')}
+                            )
+                        continue
+
                     if event_type in ("token", "metrics", "done") and not content:
                         continue
 
@@ -105,7 +121,13 @@ class OClawCLI:
         return await asyncio.to_thread(lambda: input("\nYou: ").strip())
 
     async def run(self):
-        print("OClaw CLI Client")
+        print(r"""  
+   ___   ____ _                
+  / _ \ / ___| | __ ___      __
+ | | | | |   | |/ _` \ \ /\ / /
+ | |_| | |___| | (_| |\ V  V / 
+  \___/ \____|_|\__,_| \_/\_/  
+        CLI Client""")
         print(f"Connected to: {self.base_url}")
         print("Type 'exit' or 'quit' to leave\n")
 

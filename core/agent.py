@@ -37,6 +37,7 @@ class Agent:
         user_message: str,
         max_iterations: int = 5,
         request_id: str | None = None,
+        input_queue = None,
     ):
         session = self.sessions.load_latest_or_create()
         session_id = session.metadata.session_id
@@ -55,7 +56,7 @@ class Agent:
         self.context.load(session.messages)
         self.context.append_user(user_message)
 
-        tool_schemas = self.tools.get_schemas()
+        tool_defs = self.tools.get_definitions()
 
         try:
             for iteration in range(1, max_iterations + 1):
@@ -63,20 +64,18 @@ class Agent:
                 response_thinking = ""
                 tool_calls: list[ToolCall] = []
 
-                provider_messages = self.context.as_provider_messages()
+                messages = list(self.context.messages)
 
-                messages = (
-                    [
-                        {"role": "system", "content": self.system_prompt},
-                        *provider_messages,
-                    ]
-                    if self.system_prompt.strip()
-                    else provider_messages
-                )
+                if self.system_prompt.strip():
+                    messages.insert(0, {
+                        "role": "system",
+                        "content": self.system_prompt,
+                        "timestamp": self.context._now_iso()
+                    })
 
                 async for chunk in self.provider.chat(
                     messages,
-                    tools=tool_schemas if tool_schemas else None,
+                    tools=tool_defs if tool_defs else None,
                 ):
                     if isinstance(chunk, ResponseChunk):
                         response_content += chunk.content
@@ -108,6 +107,8 @@ class Agent:
                                 "arguments": chunk.arguments,
                             },
                         }
+                        if chunk.id:
+                            normalized_call["id"] = chunk.id
                         tool_calls.append(normalized_call)
                         self.logger.info(
                             "assistant.tool_call",
@@ -115,11 +116,13 @@ class Agent:
                             session_id=session_id,
                             iteration=iteration,
                             name=chunk.name,
+                            id=chunk.id,
                             arguments=chunk.arguments,
                         )
                         yield {
                             "type": "tool_call",
                             "name": chunk.name,
+                            "id": chunk.id,
                             "args": chunk.arguments,
                         }
 
@@ -175,6 +178,25 @@ class Agent:
                 for tool_call in tool_calls:
                     tool_name = tool_call["function"]["name"]
                     tool_args = tool_call["function"]["arguments"]
+                    tool_call_id = tool_call.get("id")
+                    
+                    if input_queue is not None:
+                        yield {
+                            "type": "permission_request",
+                            "name": tool_name,
+                            "args": tool_args,
+                            "request_id": request_id, 
+                        }
+                        
+                        import asyncio
+                        loop = asyncio.get_running_loop()
+                        approved = await loop.run_in_executor(None, input_queue.get)
+                        
+                        if not approved:
+                            result_msg = f"DENIED: The user has explicitly rejected your request to execute the '{tool_name}' tool."
+                            yield {"type": "tool_end", "result": result_msg}
+                            self.context.append_tool(tool_name=tool_name, content=result_msg, tool_call_id=tool_call_id)
+                            continue
 
                     tool_result = await self.tools.execute(tool_name, tool_args)
                     self.logger.info(
@@ -189,7 +211,7 @@ class Agent:
 
                     yield {"type": "tool_end", "result": tool_result}
 
-                    self.context.append_tool(tool_name=tool_name, content=tool_result)
+                    self.context.append_tool(tool_name=tool_name, content=tool_result, tool_call_id=tool_call_id)
 
             yield {"type": "done"}
         finally:
