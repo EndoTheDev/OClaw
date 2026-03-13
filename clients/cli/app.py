@@ -23,7 +23,13 @@ class OClawCLI:
         else:
             return "response"
 
-    def _format_args(self, args: dict) -> str:
+    def _format_args(self, args: dict | str) -> str:
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except (json.JSONDecodeError, TypeError):
+                return args
+        
         if not args:
             return ""
         parts = []

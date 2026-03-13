@@ -63,6 +63,7 @@ class OpenAIProvider:
             ) as response:
 
                 response.raise_for_status()
+                accumulated_tool_calls = {}
 
                 async for line in response.aiter_lines():
 
@@ -72,6 +73,16 @@ class OpenAIProvider:
                     data_str = line.removeprefix("data: ").strip()
 
                     if data_str == "[DONE]":
+                        for tc_idx, tc_data in accumulated_tool_calls.items():
+                            try:
+                                args_dict = json.loads(tc_data["arguments"]) if tc_data["arguments"] else {}
+                            except json.JSONDecodeError as e:
+                                self.logger.error("provider.openai.tool_call.json_error", error=str(e), args=tc_data["arguments"])
+                                args_dict = {}
+                            yield ToolCallChunk(
+                                name=tc_data["name"],
+                                arguments=args_dict,
+                            )
                         yield DoneChunk(done_reason="stop")
                         break
 
@@ -94,12 +105,15 @@ class OpenAIProvider:
                     # Tool calls
                     if tool_calls := delta.get("tool_calls"):
                         for tc in tool_calls:
+                            idx = tc.get("index")
+                            if idx not in accumulated_tool_calls:
+                                accumulated_tool_calls[idx] = {"name": "", "arguments": ""}
+                            
                             func = tc.get("function", {})
-
-                            yield ToolCallChunk(
-                                name=func.get("name", ""),
-                                arguments=func.get("arguments", {}),
-                            )
+                            if "name" in func:
+                                accumulated_tool_calls[idx]["name"] += func["name"]
+                            if "arguments" in func:
+                                accumulated_tool_calls[idx]["arguments"] += func["arguments"]
 
         except httpx.HTTPStatusError as e:
             self.logger.error(
