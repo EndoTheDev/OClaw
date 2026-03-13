@@ -1,72 +1,110 @@
 # OClaw (WIP)
 
-OClaw is a Python-based AI agent runtime with a FastAPI streaming backend, Ollama provider integration, and an interactive CLI client.
+OClaw is a Python AI agent runtime with:
 
-## Prerequisites
+- FastAPI streaming backend (SSE)
+- Multi-provider support (`ollama`, `openai`)
+- Interactive CLI client
+- Built-in tool calling (`read_file`, `write_file`, `execute_shell`)
+
+## Requirements
 
 - Python 3.14+
 - [uv](https://docs.astral.sh/uv/)
-- A reachable Ollama instance
-- The model you want to use is available in Ollama
+- For Ollama mode: reachable Ollama server + installed model
+- For OpenAI mode: API key + model access
 
-## Setup
+## Quick Start
+
+### 1) Install
 
 ```bash
 uv sync
 cp .env.example .env
 ```
 
-## Configuration
+### 2) Configure
 
-Defaults are defined in `config.json`.
-You can override them in `.env` (or process environment variables).
+You can configure via `config.json`, `.env`, or environment variables.
 
-At minimum, set:
+Minimum required values:
 
-- `OLLAMA_MODEL` (required)
-- `OLLAMA_HOST` (if Ollama is not reachable at the default host)
-
-Example:
+#### Ollama
 
 ```env
+PROVIDER=ollama
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=qwen3.5:9b
 ```
 
-## Run the server
+#### OpenAI
+
+```env
+PROVIDER=openai
+OPENAI_HOST=https://api.openai.com/v1
+OPENAI_API_KEY=your_api_key
+OLLAMA_MODEL=gpt-4o-mini
+```
+
+> Note: `OLLAMA_MODEL` is currently used as the model field for both providers.
+
+### 3) Run backend
 
 ```bash
 uv run main.py --serve
 ```
 
-This starts the backend server (default: `0.0.0.0:8000` unless overridden).
+Default server: `http://0.0.0.0:8000`
 
-## Health check
+### 4) Health check
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-If you changed `SERVER_PORT`, replace `8000` accordingly.
-
-## Run the CLI
-
-In a second terminal (with server already running):
+### 5) Run CLI (new terminal)
 
 ```bash
 uv run main.py --cli
 ```
 
+## API
+
+- `GET /health` — server + provider config snapshot
+- `POST /chat/stream` — streaming chat events (SSE)
+- `POST /admin/restart` — restart worker pool
+
+## Project Structure
+
+- `main.py` — entrypoint (`--serve`, `--cli`)
+- `server/` — FastAPI gateway + worker process orchestration
+- `core/` — agent loop, config, sessions, logging, providers, tools manager
+- `tools/` — built-in callable tools
+- `clients/cli/` — terminal chat client
+
 ## Troubleshooting
 
-- **Cannot connect from containerized app to Ollama**: `localhost` inside a container points to the container itself. Use a host-reachable address (for example `host.docker.internal` where supported).
-- **Model errors**: ensure your configured `OLLAMA_MODEL` exists in Ollama before starting the app.
-- **CLI connection errors**: start backend first with `uv run main.py --serve`.
+- **Cannot connect to backend from CLI**  
+  Start server first: `uv run main.py --serve`
+- **Ollama connection fails in containers**  
+  `localhost` inside containers is local to container; use host-reachable address
+- **Model/provider errors**  
+  Check `PROVIDER`, API key/host, and model name
 
-## Roadmap
+## Current Status
 
-- [ ] Add more providers (e.g. OpenAI, Anthropic)
-- [ ] Add more CLI features (e.g. new session, list sessions, load session, delete session, etc)
-- [ ] Add dynamic skill loading
-- [ ] Add dynamic personality loading (e.g. AGENTS.md, USER.md, SOUL.md, etc)
-- [ ] Add more configuration options
+Implemented:
+
+- Streaming backend + CLI
+- Ollama provider
+- OpenAI provider
+- Tool autoloading
+- Session persistence
+- Structured logging
+
+Planned next:
+
+- More CLI session management features
+- More provider support
+- Dynamic skill/personality loading
+- Additional config and safety improvements
