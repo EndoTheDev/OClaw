@@ -37,9 +37,11 @@ class Message(TypedDict):
 
 @dataclass
 class SessionMetadata:
+    schema_version: int
     session_id: str
     date_created: str
     last_updated: str
+    active_skills: list[str]
 
 
 @dataclass
@@ -60,9 +62,11 @@ class SessionsManager:
         if not files:
             created_at = self._now_iso()
             metadata = SessionMetadata(
+                schema_version=2,
                 session_id=str(uuid.uuid4()),
                 date_created=created_at,
                 last_updated=created_at,
+                active_skills=[],
             )
             return SessionRecord(
                 file_path=self.sessions_dir / f"{created_at}.jsonl",
@@ -96,17 +100,31 @@ class SessionsManager:
         if not lines:
             created_at = self._now_iso()
             metadata = SessionMetadata(
+                schema_version=2,
                 session_id=str(uuid.uuid4()),
                 date_created=created_at,
                 last_updated=created_at,
+                active_skills=[],
             )
             return SessionRecord(file_path=file_path, metadata=metadata, messages=[])
 
         meta_data = json.loads(lines[0])
+        schema_version = meta_data.get("schema_version")
+        if schema_version != 2:
+            raise ValueError(
+                f"Unsupported session schema_version '{schema_version}'. Expected 2."
+            )
+        active_skills = meta_data.get("active_skills")
+        if not isinstance(active_skills, list) or not all(
+            isinstance(item, str) for item in active_skills
+        ):
+            raise ValueError("Session metadata field 'active_skills' must be list[str]")
         metadata = SessionMetadata(
+            schema_version=schema_version,
             session_id=meta_data["session_id"],
             date_created=meta_data["date_created"],
             last_updated=meta_data["last_updated"],
+            active_skills=active_skills,
         )
         messages = [json.loads(line) for line in lines[1:]]
         self.logger.info(

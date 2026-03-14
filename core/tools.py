@@ -4,9 +4,14 @@ import inspect
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import TYPE_CHECKING
 
 from .logger import Logger
 from .providers.base import ToolDefinition
+
+if TYPE_CHECKING:
+    from .sessions import SessionRecord, SessionsManager
+    from .skills import SkillsManager
 
 
 class Tool(ABC):
@@ -53,8 +58,22 @@ class ToolsManager:
     def __init__(self, autoload: bool = True, tools_dir: Path | None = None):
         self.logger = Logger.get("tools.py")
         self._tools: dict[str, Tool] = {}
+        self._runtime_context: dict[str, object] = {}
         if autoload:
             self.autoload(tools_dir=tools_dir)
+
+    def set_runtime_context(
+        self,
+        *,
+        session: "SessionRecord",
+        sessions_manager: "SessionsManager",
+        skills_manager: "SkillsManager",
+    ) -> None:
+        self._runtime_context = {
+            "session": session,
+            "sessions_manager": sessions_manager,
+            "skills_manager": skills_manager,
+        }
 
     def register(self, tool: Tool) -> None:
         if tool.name in self._tools:
@@ -114,6 +133,9 @@ class ToolsManager:
             return f"Error: Unknown tool '{name}'"
 
         try:
+            bind_runtime_context = getattr(tool, "set_runtime_context", None)
+            if callable(bind_runtime_context):
+                bind_runtime_context(**self._runtime_context)
             result = await tool.execute(**args)
             self.logger.info(
                 "tools.execute.success",

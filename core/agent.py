@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 from .context import ContextManager
 from .logger import Logger
 from .sessions import SessionsManager, ToolCall
+from .skills import SkillsManager
 
 from .providers.base import (
     DoneChunk,
@@ -24,10 +25,12 @@ class Agent:
         self,
         provider: "Provider",
         tools: "ToolsManager",
-        system_prompt: str = "You are a helpful assistant. Be concise and to the point.",
+        skills: SkillsManager,
+        system_prompt: str = "You are OClaw, a helpful assistant. Be concise and to the point.",
     ):
         self.provider = provider
         self.tools = tools
+        self.skills = skills
         self.context = ContextManager()
         self.sessions = SessionsManager()
         self.system_prompt = system_prompt
@@ -56,8 +59,11 @@ class Agent:
         )
         self.context.load(session.messages)
         self.context.append_user(user_message)
-
-        tool_defs = self.tools.get_definitions()
+        self.tools.set_runtime_context(
+            session=session,
+            sessions_manager=self.sessions,
+            skills_manager=self.skills,
+        )
 
         try:
             for iteration in range(1, max_iterations + 1):
@@ -66,13 +72,18 @@ class Agent:
                 tool_calls: list[ToolCall] = []
 
                 messages = list(self.context.messages)
+                tool_defs = self.tools.get_definitions()
+                system_prompt = self.skills.build_system_prompt(
+                    self.system_prompt,
+                    session.metadata.active_skills,
+                )
 
-                if self.system_prompt.strip():
+                if system_prompt.strip():
                     messages.insert(
                         0,
                         {
                             "role": "system",
-                            "content": self.system_prompt,
+                            "content": system_prompt,
                             "timestamp": self.context._now_iso(),
                         },
                     )
