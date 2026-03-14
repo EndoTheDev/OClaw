@@ -5,8 +5,9 @@ OClaw is a Python AI agent runtime with:
 - FastAPI streaming backend (SSE)
 - Multi-provider support (`ollama`, `openai`, `anthropic`)
 - Interactive CLI client
-- Built-in tool calling (`read_file`, `write_file`, `execute_shell`)
+- Built-in tool calling (`read_file`, `write_file`, `execute_shell`, `load_tool`, `unload_tool`)
 - Tool execution permission flow in CLI (approve/deny before running a tool)
+- Dynamic skills loaded from `skills/`
 
 ## Requirements
 
@@ -86,12 +87,30 @@ uv run main.py --cli
 - `POST /admin/restart` — restart worker pool
 - `POST /chat/permit` — approve or deny pending tool execution request
 
+## Skills (basic)
+
+OClaw supports local skills loaded from the `skills/` folder.
+
+- Skills are discovered from `skills/*/SKILL.md` at startup
+- Each `SKILL.md` must include YAML frontmatter with `name` and `description`
+- Skill metadata is added to the system prompt automatically
+- Full skill content is injected only for active skills
+- Use `load_tool` with `skill_id` to activate a skill
+- Use `unload_tool` with `skill_id` to deactivate a skill
+
+## Session Format
+
+Session metadata now uses schema version 2 and includes `active_skills` in the first JSONL line.
+
+> Note: Older session files without `schema_version: 2` are not compatible.
+
 ## Project Structure
 
 - `main.py` — entrypoint (`--serve`, `--cli`)
 - `server/` — FastAPI gateway + worker process orchestration
-- `core/` — agent loop, config, sessions, logging, providers, tools manager
+- `core/` — agent loop, config, sessions, skills, logging, providers, tools manager
 - `tools/` — built-in callable tools
+- `skills/` — local skill packages (`SKILL.md`, scripts, references, assets)
 - `clients/cli/` — terminal chat client
 
 ## Troubleshooting
@@ -116,10 +135,13 @@ Implemented:
 - Structured logging
 - Tool execution permission workflow
 - Improved provider tool-call handling and CLI argument formatting
+- Dynamic skill metadata autoloading from `skills/`
+- Runtime skill activation/deactivation via `load_tool` and `unload_tool`
+- Active skill prompt injection
+- Session metadata schema v2 with `active_skills`
 
 Planned next:
 
 - More CLI session management features
 - More provider support
-- Dynamic skill/personality loading
 - Additional config and safety improvements

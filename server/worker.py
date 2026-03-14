@@ -124,12 +124,14 @@ def _execute_agent(
         from core.agent import Agent
         from core.logger import Logger
         from core.config import Config
+        from core.skills import SkillsManager
         from core.tools import ToolsManager
 
         logger = Logger.get("worker.py")
         logger.info("worker.execute_agent.start", request_id=request_id)
 
         config = Config.load()
+        provider = None
         if config.provider == "openai":
             from core.providers.openai import OpenAIProvider
 
@@ -142,10 +144,16 @@ def _execute_agent(
             from core.providers.ollama import OllamaProvider
 
             provider = OllamaProvider()
+        else:
+            raise ValueError(f"Unsupported provider '{config.provider}'")
+
+        if provider is None:
+            raise RuntimeError("Provider initialization failed")
 
         tools = ToolsManager()
+        skills = SkillsManager()
 
-        agent = Agent(provider, tools)
+        agent = Agent(provider, tools, skills)
 
         async for event in agent.stream(
             message, request_id=request_id, input_queue=input_queue
