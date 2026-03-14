@@ -41,7 +41,9 @@ class ContextManager:
         self.messages.append(message)
         return message
 
-    def append_tool(self, tool_name: str, content: str, tool_call_id: str | None = None) -> Message:
+    def append_tool(
+        self, tool_name: str, content: str, tool_call_id: str | None = None
+    ) -> Message:
         message: Message = {
             "role": "tool",
             "tool_name": tool_name,

@@ -11,17 +11,19 @@ from typing import Any, Literal, NotRequired, TypedDict
 from .logger import Logger
 
 
-Role = Literal["user", "assistant", "tool"]
+Role = Literal["system", "user", "assistant", "tool"]
 
 
 class ToolCallFunction(TypedDict):
     name: str
-    arguments: dict[str, Any]
+    arguments: dict[str, Any] | str
 
-class ToolCall(TypedDict, total=False):
-    id: str
+
+class ToolCall(TypedDict):
     type: Literal["function"]
     function: ToolCallFunction
+    id: NotRequired[str]
+
 
 class Message(TypedDict):
     role: Role

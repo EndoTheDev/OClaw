@@ -28,7 +28,9 @@ class OpenAIProvider:
         self.api_key = config.openai_api_key
         self.client = httpx.AsyncClient(timeout=300.0)
         self.logger.info(
-            "provider.openai.init", base_url=self.base_url, model=self.model,
+            "provider.openai.init",
+            base_url=self.base_url,
+            model=self.model,
         )
 
     def _convert_tools(self, tools: list[ToolDefinition] | None) -> list[dict] | None:
@@ -49,35 +51,41 @@ class OpenAIProvider:
     def _convert_messages(self, messages: list[Message]) -> list[dict]:
         provider_messages = []
         for msg in messages:
-            provider_message = {
+            provider_message: dict[str, object] = {
                 "role": msg["role"],
                 "content": msg.get("content", ""),
             }
-            
+
             if "thinking" in msg:
                 provider_message["thinking"] = msg["thinking"]
-                
+
             if "tool_calls" in msg and msg["tool_calls"]:
                 formatted_tool_calls = []
                 for tc in msg["tool_calls"]:
+                    func = tc.get("function")
+                    if not func:
+                        continue
+                    arguments = func.get("arguments", {})
                     formatted_tc = {
                         "type": "function",
                         "function": {
-                            "name": tc["function"]["name"],
-                            "arguments": json.dumps(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], dict) else tc["function"]["arguments"]
-                        }
+                            "name": func.get("name", ""),
+                            "arguments": json.dumps(arguments)
+                            if isinstance(arguments, dict)
+                            else arguments,
+                        },
                     }
                     if "id" in tc:
                         formatted_tc["id"] = tc["id"]
                     formatted_tool_calls.append(formatted_tc)
                 provider_message["tool_calls"] = formatted_tool_calls
-                
+
             if msg["role"] == "tool":
                 if "tool_name" in msg:
                     provider_message["name"] = msg["tool_name"]
                 if "tool_call_id" in msg:
                     provider_message["tool_call_id"] = msg["tool_call_id"]
-                    
+
             provider_messages.append(provider_message)
         return provider_messages
 
@@ -116,12 +124,10 @@ class OpenAIProvider:
             async with self.client.stream(
                 "POST", url, headers=headers, json=payload
             ) as response:
-
                 response.raise_for_status()
                 accumulated_tool_calls = {}
 
                 async for line in response.aiter_lines():
-
                     if not line or not line.startswith("data:"):
                         continue
 
@@ -130,9 +136,17 @@ class OpenAIProvider:
                     if data_str == "[DONE]":
                         for tc_idx, tc_data in accumulated_tool_calls.items():
                             try:
-                                args_dict = json.loads(tc_data["arguments"]) if tc_data["arguments"] else {}
+                                args_dict = (
+                                    json.loads(tc_data["arguments"])
+                                    if tc_data["arguments"]
+                                    else {}
+                                )
                             except json.JSONDecodeError as e:
-                                self.logger.error("provider.openai.tool_call.json_error", error=str(e), args=tc_data["arguments"])
+                                self.logger.error(
+                                    "provider.openai.tool_call.json_error",
+                                    error=str(e),
+                                    args=tc_data["arguments"],
+                                )
                                 args_dict = {}
                             yield ToolCallChunk(
                                 id=tc_data.get("id", ""),
@@ -163,16 +177,22 @@ class OpenAIProvider:
                         for tc in tool_calls:
                             idx = tc.get("index")
                             if idx not in accumulated_tool_calls:
-                                accumulated_tool_calls[idx] = {"name": "", "arguments": "", "id": tc.get("id", "")}
+                                accumulated_tool_calls[idx] = {
+                                    "name": "",
+                                    "arguments": "",
+                                    "id": tc.get("id", ""),
+                                }
                             else:
                                 if "id" in tc and tc["id"]:
                                     accumulated_tool_calls[idx]["id"] = tc["id"]
-                            
+
                             func = tc.get("function", {})
                             if "name" in func:
                                 accumulated_tool_calls[idx]["name"] += func["name"]
                             if "arguments" in func:
-                                accumulated_tool_calls[idx]["arguments"] += func["arguments"]
+                                accumulated_tool_calls[idx]["arguments"] += func[
+                                    "arguments"
+                                ]
 
         except httpx.HTTPStatusError as e:
             self.logger.error(

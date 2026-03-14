@@ -61,7 +61,7 @@ class AgentWorker:
 
         result_queue = self._manager.Queue()
         input_queue = self._manager.Queue()
-        
+
         if request_id:
             self.pending_inputs[request_id] = input_queue
 
@@ -103,7 +103,10 @@ class AgentWorker:
                         request_id=request_id,
                         error=str(e),
                     )
-                    yield {"type": "error", "message": f"Worker communication error: {e}"}
+                    yield {
+                        "type": "error",
+                        "message": f"Worker communication error: {e}",
+                    }
                     break
         finally:
             if request_id and request_id in self.pending_inputs:
@@ -114,7 +117,9 @@ class AgentWorker:
         return await loop.run_in_executor(None, queue.get)
 
 
-def _execute_agent(message: str, result_queue: Queue, input_queue: Queue, request_id: str | None) -> None:
+def _execute_agent(
+    message: str, result_queue: Queue, input_queue: Queue, request_id: str | None
+) -> None:
     async def run_async():
         from core.agent import Agent
         from core.logger import Logger
@@ -123,23 +128,28 @@ def _execute_agent(message: str, result_queue: Queue, input_queue: Queue, reques
 
         logger = Logger.get("worker.py")
         logger.info("worker.execute_agent.start", request_id=request_id)
-        
+
         config = Config.load()
         if config.provider == "openai":
             from core.providers.openai import OpenAIProvider
+
             provider = OpenAIProvider()
         elif config.provider == "anthropic":
             from core.providers.anthropic import AnthropicProvider
+
             provider = AnthropicProvider()
         elif config.provider == "ollama":
             from core.providers.ollama import OllamaProvider
+
             provider = OllamaProvider()
-            
+
         tools = ToolsManager()
 
         agent = Agent(provider, tools)
 
-        async for event in agent.stream(message, request_id=request_id, input_queue=input_queue):
+        async for event in agent.stream(
+            message, request_id=request_id, input_queue=input_queue
+        ):
             result_queue.put(event)
 
     try:

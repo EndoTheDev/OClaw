@@ -1,3 +1,4 @@
+import json
 from typing import TYPE_CHECKING
 
 from .context import ContextManager
@@ -37,7 +38,7 @@ class Agent:
         user_message: str,
         max_iterations: int = 5,
         request_id: str | None = None,
-        input_queue = None,
+        input_queue=None,
     ):
         session = self.sessions.load_latest_or_create()
         session_id = session.metadata.session_id
@@ -67,11 +68,14 @@ class Agent:
                 messages = list(self.context.messages)
 
                 if self.system_prompt.strip():
-                    messages.insert(0, {
-                        "role": "system",
-                        "content": self.system_prompt,
-                        "timestamp": self.context._now_iso()
-                    })
+                    messages.insert(
+                        0,
+                        {
+                            "role": "system",
+                            "content": self.system_prompt,
+                            "timestamp": self.context._now_iso(),
+                        },
+                    )
 
                 async for chunk in self.provider.chat(
                     messages,
@@ -176,26 +180,44 @@ class Agent:
                     return
 
                 for tool_call in tool_calls:
-                    tool_name = tool_call["function"]["name"]
-                    tool_args = tool_call["function"]["arguments"]
+                    function_payload = tool_call.get("function")
+                    if not function_payload:
+                        continue
+                    tool_name = function_payload.get("name", "")
+                    tool_args = function_payload.get("arguments", {})
+                    if isinstance(tool_args, str):
+                        try:
+                            parsed_tool_args = json.loads(tool_args)
+                            tool_args = (
+                                parsed_tool_args
+                                if isinstance(parsed_tool_args, dict)
+                                else {}
+                            )
+                        except json.JSONDecodeError:
+                            tool_args = {}
                     tool_call_id = tool_call.get("id")
-                    
+
                     if input_queue is not None:
                         yield {
                             "type": "permission_request",
                             "name": tool_name,
                             "args": tool_args,
-                            "request_id": request_id, 
+                            "request_id": request_id,
                         }
-                        
+
                         import asyncio
+
                         loop = asyncio.get_running_loop()
                         approved = await loop.run_in_executor(None, input_queue.get)
-                        
+
                         if not approved:
                             result_msg = f"DENIED: The user has explicitly rejected your request to execute the '{tool_name}' tool."
                             yield {"type": "tool_end", "result": result_msg}
-                            self.context.append_tool(tool_name=tool_name, content=result_msg, tool_call_id=tool_call_id)
+                            self.context.append_tool(
+                                tool_name=tool_name,
+                                content=result_msg,
+                                tool_call_id=tool_call_id,
+                            )
                             continue
 
                     tool_result = await self.tools.execute(tool_name, tool_args)
@@ -211,7 +233,11 @@ class Agent:
 
                     yield {"type": "tool_end", "result": tool_result}
 
-                    self.context.append_tool(tool_name=tool_name, content=tool_result, tool_call_id=tool_call_id)
+                    self.context.append_tool(
+                        tool_name=tool_name,
+                        content=tool_result,
+                        tool_call_id=tool_call_id,
+                    )
 
             yield {"type": "done"}
         finally:

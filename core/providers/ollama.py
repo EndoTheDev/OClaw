@@ -52,35 +52,41 @@ class OllamaProvider:
     def _convert_messages(self, messages: list[Message]) -> list[dict]:
         provider_messages = []
         for msg in messages:
-            provider_message = {
+            provider_message: dict[str, object] = {
                 "role": msg["role"],
                 "content": msg.get("content", ""),
             }
-            
+
             if "thinking" in msg:
                 provider_message["thinking"] = msg["thinking"]
-                
+
             if "tool_calls" in msg and msg["tool_calls"]:
                 formatted_tool_calls = []
                 for tc in msg["tool_calls"]:
+                    func = tc.get("function")
+                    if not func:
+                        continue
+                    arguments = func.get("arguments", {})
                     formatted_tc = {
                         "type": "function",
                         "function": {
-                            "name": tc["function"]["name"],
-                            "arguments": tc["function"]["arguments"] if isinstance(tc["function"]["arguments"], dict) else json.loads(tc["function"]["arguments"])
-                        }
+                            "name": func.get("name", ""),
+                            "arguments": arguments
+                            if isinstance(arguments, dict)
+                            else json.loads(arguments),
+                        },
                     }
                     if "id" in tc:
                         formatted_tc["id"] = tc["id"]
                     formatted_tool_calls.append(formatted_tc)
                 provider_message["tool_calls"] = formatted_tool_calls
-                
+
             if msg["role"] == "tool":
                 if "tool_name" in msg:
                     provider_message["name"] = msg["tool_name"]
                 if "tool_call_id" in msg:
                     provider_message["tool_call_id"] = msg["tool_call_id"]
-                    
+
             provider_messages.append(provider_message)
         return provider_messages
 

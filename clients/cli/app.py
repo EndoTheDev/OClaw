@@ -23,17 +23,23 @@ class OClawCLI:
         else:
             return "response"
 
-    def _format_args(self, args: dict | str) -> str:
+    def _format_args(self, args: dict[str, object] | str) -> str:
         if isinstance(args, str):
             try:
-                args = json.loads(args)
-            except (json.JSONDecodeError, TypeError):
+                parsed_args = json.loads(args)
+            except json.JSONDecodeError, TypeError:
                 return args
-        
-        if not args:
+
+            if not isinstance(parsed_args, dict):
+                return str(parsed_args)
+            args_dict: dict[str, object] = parsed_args
+        else:
+            args_dict = args
+
+        if not args_dict:
             return ""
         parts = []
-        for k, v in args.items():
+        for k, v in args_dict.items():
             if isinstance(v, str):
                 parts.append(f'{k}="{v}"')
             else:
@@ -81,15 +87,20 @@ class OClawCLI:
                         name = data.get("name")
                         args = data.get("args")
                         request_id = data.get("request_id")
-                        
+
                         formatted_args = self._format_args(args)
-                        print(f"\n\nSystem: The agent wants to run the tool '{name}({formatted_args})'.")
+                        print(
+                            f"\n\nSystem: The agent wants to run the tool '{name}({formatted_args})'."
+                        )
                         ans = input("Allow execution? (y/n): ")
-                        
+
                         async with httpx.AsyncClient() as permit_client:
                             await permit_client.post(
                                 f"{self.base_url}/chat/permit",
-                                json={"request_id": request_id, "approved": ans.lower().startswith('y')}
+                                json={
+                                    "request_id": request_id,
+                                    "approved": ans.lower().startswith("y"),
+                                },
                             )
                         continue
 

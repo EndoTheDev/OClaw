@@ -21,6 +21,7 @@ class PermitRequest(BaseModel):
     request_id: str
     approved: bool
 
+
 class AgentGateway:
     def __init__(self, num_workers: int | None = None, timeout: int | None = None):
         self.logger = Logger.get("gateway.py")
@@ -102,7 +103,9 @@ class AgentGateway:
 
         @app.post("/chat/permit")
         async def chat_permit(req: PermitRequest):
-            self.logger.info("gateway.chat_permit", request_id=req.request_id, approved=req.approved)
+            self.logger.info(
+                "gateway.chat_permit", request_id=req.request_id, approved=req.approved
+            )
             if req.request_id in self.worker.pending_inputs:
                 self.worker.pending_inputs[req.request_id].put(req.approved)
                 return {"status": "ok"}

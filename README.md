@@ -6,6 +6,7 @@ OClaw is a Python AI agent runtime with:
 - Multi-provider support (`ollama`, `openai`, `anthropic`)
 - Interactive CLI client
 - Built-in tool calling (`read_file`, `write_file`, `execute_shell`)
+- Tool execution permission flow in CLI (approve/deny before running a tool)
 
 ## Requirements
 
@@ -83,6 +84,7 @@ uv run main.py --cli
 - `GET /health` — server + provider config snapshot
 - `POST /chat/stream` — streaming chat events (SSE)
 - `POST /admin/restart` — restart worker pool
+- `POST /chat/permit` — approve or deny pending tool execution request
 
 ## Project Structure
 
@@ -112,6 +114,8 @@ Implemented:
 - Tool autoloading
 - Session persistence
 - Structured logging
+- Tool execution permission workflow
+- Improved provider tool-call handling and CLI argument formatting
 
 Planned next:
 

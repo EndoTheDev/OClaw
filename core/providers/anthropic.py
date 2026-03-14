@@ -28,13 +28,17 @@ class AnthropicProvider:
         self.api_key = config.anthropic_api_key
         self.client = httpx.AsyncClient(timeout=300.0)
         self.logger.info(
-            "provider.anthropic.init", base_url=self.base_url, model=self.model,
+            "provider.anthropic.init",
+            base_url=self.base_url,
+            model=self.model,
         )
 
-    def _convert_tools_to_anthropic(self, tools: list[ToolDefinition] | None) -> list[dict] | None:
+    def _convert_tools_to_anthropic(
+        self, tools: list[ToolDefinition] | None
+    ) -> list[dict] | None:
         if not tools:
             return None
-        
+
         anthropic_tools = []
         for tool in tools:
             anthropic_tool = {
@@ -47,73 +51,77 @@ class AnthropicProvider:
                 },
             }
             anthropic_tools.append(anthropic_tool)
-        
+
         return anthropic_tools if anthropic_tools else None
 
     def _convert_messages_to_anthropic(self, messages: list[Message]) -> list[dict]:
         """Convert standard message format to Anthropic's format."""
         if not messages:
             return []
-            
+
         anthropic_messages = []
         for msg in messages:
             role = msg["role"]
-            
-            # Skip system messages as they are handled separately in Anthropic
+
             if role == "system":
                 continue
-                
+
             content = msg.get("content", "")
-            
+
             if role == "tool":
-                # Convert tool output to Anthropic's user message format 
+
                 block = {
                     "type": "tool_result",
                     "tool_use_id": msg.get("tool_call_id", ""),
-                    "content": content
+                    "content": content,
                 }
-                # If last message is user, append block instead of new message
+
                 if anthropic_messages and anthropic_messages[-1]["role"] == "user":
                     if isinstance(anthropic_messages[-1]["content"], list):
                         anthropic_messages[-1]["content"].append(block)
                     else:
                         anthropic_messages[-1]["content"] = [
                             {"type": "text", "text": anthropic_messages[-1]["content"]},
-                            block
+                            block,
                         ]
                 else:
                     anthropic_messages.append({"role": "user", "content": [block]})
                 continue
-                
-            if role == "assistant" and msg.get("tool_calls"):
+
+            tool_calls = msg.get("tool_calls")
+            if role == "assistant" and tool_calls:
                 blocks = []
                 if content:
                     blocks.append({"type": "text", "text": content})
-                    
+
                 import json
-                for tool_call in msg["tool_calls"]:
-                    func = tool_call.get("function", {})
+
+                for tool_call in tool_calls:
+                    func = tool_call.get("function")
+                    if not func:
+                        continue
                     args = func.get("arguments", {})
-                    # If somehow arguments are already a string, parse them back
+
                     if isinstance(args, str):
                         try:
                             args = json.loads(args)
                         except json.JSONDecodeError:
                             args = {}
-                            
-                    blocks.append({
-                        "type": "tool_use",
-                        "id": tool_call.get("id", ""),
-                        "name": func.get("name", ""),
-                        "input": args
-                    })
-                    
+
+                    blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tool_call.get("id", ""),
+                            "name": func.get("name", ""),
+                            "input": args,
+                        }
+                    )
+
                 anthropic_messages.append({"role": "assistant", "content": blocks})
                 continue
-                
-            # Default text messages
+
             anthropic_messages.append({"role": role, "content": content})
-            
+
         return anthropic_messages
 
     async def chat(
@@ -122,10 +130,15 @@ class AnthropicProvider:
 
         url = f"{self.base_url}/messages"
 
-        # Extract system prompt if present
-        system_prompt = next((m["content"] for m in messages if m["role"] == "system"), None)
-        
-        # Convert messages to Anthropic format
+        system_prompt = next(
+            (
+                m.get("content")
+                for m in messages
+                if m["role"] == "system" and m.get("content")
+            ),
+            None,
+        )
+
         anthropic_messages = self._convert_messages_to_anthropic(messages)
 
         payload = {
@@ -134,7 +147,7 @@ class AnthropicProvider:
             "max_tokens": 4096,
             "stream": True,
         }
-        
+
         if system_prompt:
             payload["system"] = system_prompt
 
@@ -160,7 +173,6 @@ class AnthropicProvider:
             async with self.client.stream(
                 "POST", url, headers=headers, json=payload
             ) as response:
-
                 response.raise_for_status()
                 accumulated_tool_input = {}
                 accumulated_tool_ids = {}
@@ -169,7 +181,7 @@ class AnthropicProvider:
                 async for line in response.aiter_lines():
                     if not line or not line.startswith("data:"):
                         continue
-                    
+
                     data_str = line.removeprefix("data: ").strip()
 
                     try:
@@ -182,29 +194,40 @@ class AnthropicProvider:
                     if event_type == "content_block_start":
                         content_block = data.get("content_block", {})
                         block_type = content_block.get("type")
-                        
+
                         if block_type == "tool_use":
                             current_tool_name = content_block.get("name", "")
                             accumulated_tool_input[current_tool_name] = ""
-                            accumulated_tool_ids[current_tool_name] = content_block.get("id")
+                            accumulated_tool_ids[current_tool_name] = content_block.get(
+                                "id"
+                            )
 
                     elif event_type == "content_block_delta":
                         delta = data.get("delta", {})
                         delta_type = delta.get("type")
-                        
+
                         if delta_type == "text_delta":
                             content = delta.get("text", "")
                             yield ResponseChunk(content=content)
-                        
+
                         elif delta_type == "input_json_delta":
                             json_delta = delta.get("partial_json", "")
                             if current_tool_name:
                                 accumulated_tool_input[current_tool_name] += json_delta
 
                     elif event_type == "content_block_stop":
-                        if current_tool_name and current_tool_name in accumulated_tool_input:
+                        if (
+                            current_tool_name
+                            and current_tool_name in accumulated_tool_input
+                        ):
                             try:
-                                args_dict = json.loads(accumulated_tool_input[current_tool_name]) if accumulated_tool_input[current_tool_name] else {}
+                                args_dict = (
+                                    json.loads(
+                                        accumulated_tool_input[current_tool_name]
+                                    )
+                                    if accumulated_tool_input[current_tool_name]
+                                    else {}
+                                )
                             except json.JSONDecodeError as e:
                                 self.logger.error(
                                     "provider.anthropic.tool_call.json_error",
@@ -212,7 +235,7 @@ class AnthropicProvider:
                                     input=accumulated_tool_input[current_tool_name],
                                 )
                                 args_dict = {}
-                            
+
                             yield ToolCallChunk(
                                 name=current_tool_name,
                                 arguments=args_dict,

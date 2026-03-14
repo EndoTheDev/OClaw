@@ -3,12 +3,15 @@ from typing import AsyncGenerator, Literal, Protocol
 
 from ..sessions import Message
 
+
 @dataclass
 class ToolDefinition:
     """A standardized tool definition."""
+
     name: str
     description: str
     parameters: dict
+
 
 @dataclass
 class ResponseChunk:

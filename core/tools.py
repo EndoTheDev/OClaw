@@ -6,6 +6,7 @@ from pathlib import Path
 from types import ModuleType
 
 from .logger import Logger
+from .providers.base import ToolDefinition
 
 
 class Tool(ABC):
@@ -41,12 +42,12 @@ class Tool(ABC):
     @property
     def definition(self) -> "ToolDefinition":
         """Get the standardized tool definition."""
-        from .providers.base import ToolDefinition
         return ToolDefinition(
             name=self.name,
             description=self.description,
             parameters=self.parameters,
         )
+
 
 class ToolsManager:
     def __init__(self, autoload: bool = True, tools_dir: Path | None = None):
