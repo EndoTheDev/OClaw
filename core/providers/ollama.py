@@ -67,7 +67,7 @@ class OllamaProvider:
                         "type": "function",
                         "function": {
                             "name": tc["function"]["name"],
-                            "arguments": json.dumps(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], dict) else tc["function"]["arguments"]
+                            "arguments": tc["function"]["arguments"] if isinstance(tc["function"]["arguments"], dict) else json.loads(tc["function"]["arguments"])
                         }
                     }
                     if "id" in tc:

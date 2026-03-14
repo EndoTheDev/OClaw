@@ -197,7 +197,7 @@ class AnthropicProvider:
                             yield ResponseChunk(content=content)
                         
                         elif delta_type == "input_json_delta":
-                            json_delta = delta.get("input_json", "")
+                            json_delta = delta.get("partial_json", "")
                             if current_tool_name:
                                 accumulated_tool_input[current_tool_name] += json_delta
 
