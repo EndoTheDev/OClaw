@@ -37,7 +37,6 @@ class Message(TypedDict):
 
 @dataclass
 class SessionMetadata:
-    schema_version: int
     session_id: str
     date_created: str
     last_updated: str
@@ -56,25 +55,53 @@ class SessionsManager:
         self.sessions_dir = Path(sessions_dir)
         self.logger = Logger.get("sessions.py")
 
-    def load_latest_or_create(self) -> SessionRecord:
+    def list_sessions(self) -> list[SessionRecord]:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
-        files = sorted(self.sessions_dir.glob("*.jsonl"))
+        files = sorted(self.sessions_dir.glob("*.jsonl"), reverse=True)
+        sessions = []
+        for file_path in files:
+            session = self._load_session(file_path)
+            sessions.append(session)
+        return sessions
+
+    def get_latest_session_id(self) -> str:
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        files = sorted(self.sessions_dir.glob("*.jsonl"), reverse=True)
         if not files:
-            created_at = self._now_iso()
-            metadata = SessionMetadata(
-                schema_version=2,
-                session_id=str(uuid.uuid4()),
-                date_created=created_at,
-                last_updated=created_at,
-                active_skills=[],
-            )
-            return SessionRecord(
-                file_path=self.sessions_dir / f"{created_at}.jsonl",
-                metadata=metadata,
-                messages=[],
-            )
-        self.logger.info("session.load.latest", file_path=str(files[-1]))
-        return self._load_session(files[-1])
+            new_session = self.create_new_session()
+            return new_session.metadata.session_id
+        metadata = json.loads(open(files[0], "r", encoding="utf-8").readline())
+        return metadata["session_id"]
+
+    def get_session_by_id(self, session_id: str) -> SessionRecord:
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        files = self.sessions_dir.glob("*.jsonl")
+        for file_path in files:
+            with open(file_path, "r", encoding="utf-8") as f:
+                first_line = f.readline()
+                if not first_line.strip():
+                    continue
+                metadata = json.loads(first_line)
+                if metadata.get("session_id") == session_id:
+                    return self._load_session(file_path)
+        raise ValueError(f"Session with id '{session_id}' not found")
+
+    def create_new_session(self) -> SessionRecord:
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        created_at = self._now_iso()
+        metadata = SessionMetadata(
+            session_id=str(uuid.uuid4()),
+            date_created=created_at,
+            last_updated=created_at,
+            active_skills=[],
+        )
+        session = SessionRecord(
+            file_path=self.sessions_dir / f"{created_at}.jsonl",
+            metadata=metadata,
+            messages=[],
+        )
+        self.overwrite(session)
+        return session
 
     def overwrite(self, session: SessionRecord) -> None:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
@@ -100,7 +127,6 @@ class SessionsManager:
         if not lines:
             created_at = self._now_iso()
             metadata = SessionMetadata(
-                schema_version=2,
                 session_id=str(uuid.uuid4()),
                 date_created=created_at,
                 last_updated=created_at,
@@ -109,18 +135,12 @@ class SessionsManager:
             return SessionRecord(file_path=file_path, metadata=metadata, messages=[])
 
         meta_data = json.loads(lines[0])
-        schema_version = meta_data.get("schema_version")
-        if schema_version != 2:
-            raise ValueError(
-                f"Unsupported session schema_version '{schema_version}'. Expected 2."
-            )
         active_skills = meta_data.get("active_skills")
         if not isinstance(active_skills, list) or not all(
             isinstance(item, str) for item in active_skills
         ):
             raise ValueError("Session metadata field 'active_skills' must be list[str]")
         metadata = SessionMetadata(
-            schema_version=schema_version,
             session_id=meta_data["session_id"],
             date_created=meta_data["date_created"],
             last_updated=meta_data["last_updated"],

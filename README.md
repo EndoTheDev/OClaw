@@ -98,12 +98,6 @@ OClaw supports local skills loaded from the `skills/` folder.
 - Use `load_tool` with `skill_id` to activate a skill
 - Use `unload_tool` with `skill_id` to deactivate a skill
 
-## Session Format
-
-Session metadata now uses schema version 2 and includes `active_skills` in the first JSONL line.
-
-> Note: Older session files without `schema_version: 2` are not compatible.
-
 ## Project Structure
 
 - `main.py` — entrypoint (`--serve`, `--cli`)
@@ -138,7 +132,6 @@ Implemented:
 - Dynamic skill metadata autoloading from `skills/`
 - Runtime skill activation/deactivation via `load_tool` and `unload_tool`
 - Active skill prompt injection
-- Session metadata schema v2 with `active_skills`
 
 Planned next:
 

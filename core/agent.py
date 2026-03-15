@@ -39,11 +39,12 @@ class Agent:
     async def stream(
         self,
         user_message: str,
+        session_id: str,
         max_iterations: int = 5,
         request_id: str | None = None,
         input_queue=None,
     ):
-        session = self.sessions.load_latest_or_create()
+        session = self.sessions.get_session_by_id(session_id)
         session_id = session.metadata.session_id
         self.logger.info(
             "agent.start",

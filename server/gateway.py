@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 
 from core.config import Config
 from core.logger import Logger
@@ -15,6 +15,7 @@ from server.worker import AgentWorker
 
 class ChatRequest(BaseModel):
     message: str
+    session_id: str
 
 
 class PermitRequest(BaseModel):
@@ -66,9 +67,17 @@ class AgentGateway:
         @app.post("/chat/stream")
         async def chat_stream(request: ChatRequest):
             request_id = str(uuid.uuid4())
+            try:
+                self.sessions_manager.get_session_by_id(request.session_id)
+            except ValueError:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": f"Session not found: {request.session_id}"},
+                )
             self.logger.info(
                 "gateway.chat_stream.request",
                 request_id=request_id,
+                session_id=request.session_id,
                 message_chars=len(request.message),
             )
 
@@ -76,7 +85,7 @@ class AgentGateway:
                 import json
 
                 async for event in self.worker.run_agent(
-                    request.message, request_id=request_id
+                    request.message, request.session_id, request_id=request_id
                 ):
                     if event.get("type") == "error":
                         self.logger.error(
@@ -94,6 +103,31 @@ class AgentGateway:
                     "Connection": "keep-alive",
                 },
             )
+
+        @app.get("/sessions/list")
+        async def list_sessions():
+            sessions = self.sessions_manager.list_sessions()
+            return {
+                "sessions": [
+                    {
+                        "session_id": s.metadata.session_id,
+                        "file_path": str(s.file_path),
+                        "date_created": s.metadata.date_created,
+                        "last_updated": s.metadata.last_updated,
+                        "message_count": len(s.messages),
+                    }
+                    for s in sessions
+                ]
+            }
+
+        @app.post("/sessions/new")
+        async def create_session():
+            session = self.sessions_manager.create_new_session()
+            return {
+                "session_id": session.metadata.session_id,
+                "file_path": str(session.file_path),
+                "date_created": session.metadata.date_created,
+            }
 
         @app.post("/admin/restart")
         async def restart_workers():
