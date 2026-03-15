@@ -50,7 +50,12 @@ class AgentWorker:
         self.stop()
         self.start()
 
-    async def run_agent(self, message: str, request_id: str | None = None):
+    async def run_agent(
+        self,
+        message: str,
+        session_id: str,
+        request_id: str | None = None,
+    ):
         if not self._executor or not self._manager:
             self.logger.error("worker.run_agent.not_started", request_id=request_id)
             raise RuntimeError("Worker pool not started. Call start() first.")
@@ -68,6 +73,7 @@ class AgentWorker:
         future = self._executor.submit(
             _execute_agent,
             message,
+            session_id,
             result_queue,
             input_queue,
             request_id,
@@ -118,7 +124,11 @@ class AgentWorker:
 
 
 def _execute_agent(
-    message: str, result_queue: Queue, input_queue: Queue, request_id: str | None
+    message: str,
+    session_id: str,
+    result_queue: Queue,
+    input_queue: Queue,
+    request_id: str | None,
 ) -> None:
     async def run_async():
         from core.agent import Agent
@@ -156,7 +166,10 @@ def _execute_agent(
         agent = Agent(provider, tools, skills)
 
         async for event in agent.stream(
-            message, request_id=request_id, input_queue=input_queue
+            message,
+            session_id=session_id,
+            request_id=request_id,
+            input_queue=input_queue,
         ):
             result_queue.put(event)
 

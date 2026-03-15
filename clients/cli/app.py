@@ -27,7 +27,7 @@ class OClawCLI:
         if isinstance(args, str):
             try:
                 parsed_args = json.loads(args)
-            except json.JSONDecodeError, TypeError:
+            except (json.JSONDecodeError, TypeError):
                 return args
 
             if not isinstance(parsed_args, dict):
@@ -62,7 +62,21 @@ class OClawCLI:
                 return str(data[key])
         return ""
 
-    async def _stream_response(self, message: str):
+    async def _fetch_latest_session_id(self) -> str:
+        response = await self.client.get(f"{self.base_url}/sessions/list")
+        response.raise_for_status()
+        data = response.json()
+        if not data["sessions"]:
+            return await self._create_new_session()
+        return data["sessions"][0]["session_id"]
+
+    async def _create_new_session(self) -> str:
+        response = await self.client.post(f"{self.base_url}/sessions/new")
+        response.raise_for_status()
+        data = response.json()
+        return data["session_id"]
+
+    async def _stream_response(self, message: str, session_id: str):
         url = f"{self.base_url}/chat/stream"
         current_section = None
 
@@ -70,7 +84,7 @@ class OClawCLI:
             async with self.client.stream(
                 "POST",
                 url,
-                json={"message": message},
+                json={"message": message, "session_id": session_id},
             ) as response:
                 response.raise_for_status()
 
@@ -132,13 +146,15 @@ class OClawCLI:
         return await asyncio.to_thread(lambda: input("\nYou: ").strip())
 
     async def run(self):
-        print(r"""  
+        print(
+            r"""  
    ___   ____ _                
   / _ \ / ___| | __ ___      __
  | | | | |   | |/ _` \ \ /\ / /
  | |_| | |___| | (_| |\ V  V / 
   \___/ \____|_|\__,_| \_/\_/  
-        CLI Client""")
+        CLI Client"""
+        )
         print(f"Connected to: {self.base_url}")
         print("Type 'exit' or 'quit' to leave\n")
 
@@ -154,10 +170,17 @@ class OClawCLI:
                     print("Goodbye!")
                     break
 
+                if user_input.lower() == "/new":
+                    print("\nCreating new session...")
+                    session_id = await self._create_new_session()
+                    print(f"New session created: {session_id}")
+                    continue
+
                 if not user_input:
                     continue
 
-                await self._stream_response(user_input)
+                session_id = await self._fetch_latest_session_id()
+                await self._stream_response(user_input, session_id)
 
         finally:
             await self.client.aclose()
