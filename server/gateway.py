@@ -27,8 +27,8 @@ class AgentGateway:
     def __init__(self, num_workers: int | None = None, timeout: int | None = None):
         self.logger = Logger.get("gateway.py")
         config = Config.load()
-        self.num_workers = num_workers or config.num_workers
-        self.timeout = timeout or config.worker_timeout
+        self.num_workers = num_workers or config.worker.num_processes
+        self.timeout = timeout or config.worker.timeout
         self.worker = AgentWorker(num_processes=self.num_workers, timeout=self.timeout)
         self.sessions_manager = SessionsManager()
         self.app = self._create_app()
@@ -58,10 +58,10 @@ class AgentGateway:
                 "status": "healthy",
                 "workers": self.num_workers,
                 "timeout": self.timeout,
-                "provider": config.provider,
-                "ollama_host": config.ollama_host,
-                "openai_host": config.openai_host,
-                "model": config.model,
+                "provider": config.provider.active,
+                "ollama_host": config.provider.ollama_host,
+                "openai_host": config.provider.openai_host,
+                "model": config.provider.model,
             }
 
         @app.post("/chat/stream")
@@ -151,14 +151,14 @@ class AgentGateway:
         config = Config.load()
         self.logger.info(
             "gateway.run",
-            host=host or config.server_host,
-            port=port or config.server_port,
+            host=host or config.server.host,
+            port=port or config.server.port,
         )
 
         uvicorn.run(
             self.app,
-            host=host or config.server_host,
-            port=port or config.server_port,
+            host=host or config.server.host,
+            port=port or config.server.port,
             access_log=False,
             log_level="warning",
         )

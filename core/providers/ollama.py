@@ -27,8 +27,8 @@ class OllamaProvider:
         self.logger = Logger.get("ollama.py")
         config = Config.load()
 
-        self.base_url = base_url or config.ollama_host
-        self.model = model or config.model
+        self.base_url = base_url or config.provider.ollama_host
+        self.model = model or config.provider.model
         self.client = httpx.AsyncClient(timeout=300.0)
         self.logger.info(
             "provider.ollama.init", base_url=self.base_url, model=self.model

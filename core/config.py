@@ -8,48 +8,72 @@ from .logger import Logger
 
 
 @dataclass
-class Config:
-    provider: str = "ollama"
+class ProviderConfig:
+    active: str = "ollama"
     ollama_host: str = "http://localhost:11434"
     openai_host: str = "https://api.openai.com/v1"
     openai_api_key: str | None = None
     anthropic_host: str = "https://api.anthropic.com/v1"
     anthropic_api_key: str | None = None
     model: str | None = None
+
+
+@dataclass
+class AgentConfig:
     max_iterations: int = 5
-    server_host: str = "0.0.0.0"
-    server_port: int = 8000
-    num_workers: int = 4
-    worker_timeout: int = 300
+
+
+@dataclass
+class ServerConfig:
+    host: str = "0.0.0.0"
+    port: int = 8000
+
+
+@dataclass
+class WorkerConfig:
+    num_processes: int = 4
+    timeout: int = 300
+
+
+@dataclass
+class Config:
+    provider: ProviderConfig
+    agent: AgentConfig
+    server: ServerConfig
+    worker: WorkerConfig
 
     _ENV_MAPPING = {
-        "PROVIDER": "provider",
-        "OLLAMA_HOST": "ollama_host",
-        "OPENAI_HOST": "openai_host",
-        "OPENAI_API_KEY": "openai_api_key",
-        "ANTHROPIC_HOST": "anthropic_host",
-        "ANTHROPIC_API_KEY": "anthropic_api_key",
-        "OLLAMA_MODEL": "model",
-        "MAX_ITERATIONS": "max_iterations",
-        "SERVER_HOST": "server_host",
-        "SERVER_PORT": "server_port",
-        "NUM_WORKERS": "num_workers",
-        "WORKER_TIMEOUT": "worker_timeout",
+        # Provider
+        "PROVIDER_ACTIVE": "provider.active",
+        "PROVIDER_OLLAMA_HOST": "provider.ollama_host",
+        "PROVIDER_OPENAI_HOST": "provider.openai_host",
+        "PROVIDER_OPENAI_API_KEY": "provider.openai_api_key",
+        "PROVIDER_ANTHROPIC_HOST": "provider.anthropic_host",
+        "PROVIDER_ANTHROPIC_API_KEY": "provider.anthropic_api_key",
+        "PROVIDER_MODEL": "provider.model",
+        # Agent
+        "AGENT_MAX_ITERATIONS": "agent.max_iterations",
+        # Server
+        "SERVER_HOST": "server.host",
+        "SERVER_PORT": "server.port",
+        # Worker
+        "WORKER_NUM_PROCESSES": "worker.num_processes",
+        "WORKER_TIMEOUT": "worker.timeout",
     }
 
     _FIELD_NAMES = {
-        "provider",
-        "ollama_host",
-        "openai_host",
-        "openai_api_key",
-        "anthropic_host",
-        "anthropic_api_key",
-        "model",
-        "max_iterations",
-        "server_host",
-        "server_port",
-        "num_workers",
-        "worker_timeout",
+        "provider.active",
+        "provider.ollama_host",
+        "provider.openai_host",
+        "provider.openai_api_key",
+        "provider.anthropic_host",
+        "provider.anthropic_api_key",
+        "provider.model",
+        "agent.max_iterations",
+        "server.host",
+        "server.port",
+        "worker.num_processes",
+        "worker.timeout",
     }
 
     @classmethod
@@ -65,7 +89,7 @@ class Config:
                     file_config = json.load(f)
                     values.update(cls._normalize_keys(file_config))
                 logger.info("config.load.file.success", path=str(config_file))
-            except (json.JSONDecodeError, IOError):
+            except json.JSONDecodeError, IOError:
                 logger.error("config.load.file.failed", path=str(config_file))
                 pass
 
@@ -91,28 +115,34 @@ class Config:
         values.update(cls._normalize_keys(env_file_values))
 
         process_env_values: dict[str, Any] = {}
-        for env_key, config_key in cls._ENV_MAPPING.items():
+        for env_key, config_path in cls._ENV_MAPPING.items():
             env_value = os.getenv(env_key)
             if env_value is not None:
-                process_env_values[config_key] = env_value
+                process_env_values[config_path] = env_value
 
         values.update(process_env_values)
 
         values = cls._convert_types(values)
+        values = cls._build_nested_structure(values)
 
-        config = cls(**values)
+        config = cls(
+            provider=ProviderConfig(**values.get("provider", {})),
+            agent=AgentConfig(**values.get("agent", {})),
+            server=ServerConfig(**values.get("server", {})),
+            worker=WorkerConfig(**values.get("worker", {})),
+        )
         config.validate()
         logger.info(
             "config.load.done",
-            provider=config.provider,
-            ollama_host=config.ollama_host,
-            openai_host=config.openai_host,
-            model=config.model,
-            max_iterations=config.max_iterations,
-            server_host=config.server_host,
-            server_port=config.server_port,
-            num_workers=config.num_workers,
-            worker_timeout=config.worker_timeout,
+            provider=config.provider.active,
+            ollama_host=config.provider.ollama_host,
+            openai_host=config.provider.openai_host,
+            model=config.provider.model,
+            max_iterations=config.agent.max_iterations,
+            server_host=config.server.host,
+            server_port=config.server.port,
+            num_workers=config.worker.num_processes,
+            worker_timeout=config.worker.timeout,
         )
         return config
 
@@ -120,44 +150,96 @@ class Config:
     def _normalize_keys(cls, values: dict[str, Any]) -> dict[str, Any]:
         normalized: dict[str, Any] = {}
         for key, value in values.items():
-            key_text = str(key)
-            mapped_key = cls._ENV_MAPPING.get(key_text.upper(), key_text)
-            if mapped_key in cls._FIELD_NAMES:
-                normalized[mapped_key] = value
+            if isinstance(value, dict):
+                if key == "provider":
+                    for nested_key, nested_value in value.items():
+                        if isinstance(nested_value, dict):
+                            for sub_key, sub_value in nested_value.items():
+                                env_key = f"{key}_{nested_key}_{sub_key}".upper()
+                                mapped_key = cls._ENV_MAPPING.get(env_key)
+                                if mapped_key:
+                                    normalized[mapped_key] = sub_value
+                                else:
+                                    normalized[f"{key}.{nested_key}.{sub_key}"] = (
+                                        sub_value
+                                    )
+                        else:
+                            env_key = f"{key}_{nested_key}".upper()
+                            mapped_key = cls._ENV_MAPPING.get(env_key)
+                            if mapped_key:
+                                normalized[mapped_key] = nested_value
+                            else:
+                                normalized[f"{key}.{nested_key}"] = nested_value
+                elif key == "agent":
+                    for nested_key, nested_value in value.items():
+                        env_key = f"{key}_{nested_key}".upper()
+                        mapped_key = cls._ENV_MAPPING.get(env_key)
+                        if mapped_key:
+                            normalized[mapped_key] = nested_value
+                        else:
+                            normalized[f"{key}.{nested_key}"] = nested_value
+                elif key == "server":
+                    for nested_key, nested_value in value.items():
+                        env_key = f"{key}_{nested_key}".upper()
+                        mapped_key = cls._ENV_MAPPING.get(env_key)
+                        if mapped_key:
+                            normalized[mapped_key] = nested_value
+                        else:
+                            normalized[f"{key}.{nested_key}"] = nested_value
+                elif key == "worker":
+                    for nested_key, nested_value in value.items():
+                        env_key = f"{key}_{nested_key}".upper()
+                        mapped_key = cls._ENV_MAPPING.get(env_key)
+                        if mapped_key:
+                            normalized[mapped_key] = nested_value
+                        else:
+                            normalized[f"{key}.{nested_key}"] = nested_value
+            else:
+                key_text = str(key)
+                mapped_key = cls._ENV_MAPPING.get(key_text.upper(), key_text)
+                if mapped_key in cls._FIELD_NAMES:
+                    normalized[mapped_key] = value
         return normalized
 
     @staticmethod
     def _convert_types(values: dict[str, Any]) -> dict[str, Any]:
         converters = {
-            "max_iterations": int,
-            "server_port": int,
-            "num_workers": int,
-            "worker_timeout": int,
+            "agent.max_iterations": int,
+            "server.port": int,
+            "worker.num_processes": int,
+            "worker.timeout": int,
         }
 
         for key, converter in converters.items():
             if key in values and isinstance(values[key], str):
                 try:
                     values[key] = converter(values[key])
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
 
         return values
 
-    def validate(self) -> None:
-        if not self.model or not self.model.strip():
-            raise ValueError(
-                "Model not configured. Set 'model' in config.json or OLLAMA_MODEL in .env"
-            )
+    @classmethod
+    def _build_nested_structure(
+        cls, values: dict[str, Any]
+    ) -> dict[str, dict[str, Any]]:
+        nested: dict[str, dict[str, Any]] = {
+            "provider": {},
+            "agent": {},
+            "server": {},
+            "worker": {},
+        }
 
-    # def to_dict(self) -> dict[str, Any]:
-    #     """Convert config to dictionary."""
-    #     return {
-    #         "ollama_host": self.ollama_host,
-    #         "model": self.model,
-    #         "max_iterations": self.max_iterations,
-    #         "server_host": self.server_host,
-    #         "server_port": self.server_port,
-    #         "num_workers": self.num_workers,
-    #         "worker_timeout": self.worker_timeout,
-    #     }
+        for key, value in values.items():
+            if "." in key:
+                category, _, field = key.partition(".")
+                if category in nested:
+                    nested[category][field] = value
+
+        return nested
+
+    def validate(self) -> None:
+        if not self.provider.model or not self.provider.model.strip():
+            raise ValueError(
+                "Model not configured. Set 'provider.model' in config.json or OLLAMA_MODEL in .env"
+            )
