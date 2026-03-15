@@ -23,9 +23,9 @@ class AnthropicProvider:
         config = Config.load()
         self.logger = Logger.get("anthropic.py")
 
-        self.base_url = base_url or config.anthropic_host
-        self.model = model or config.model
-        self.api_key = config.anthropic_api_key
+        self.base_url = base_url or config.provider.anthropic_host
+        self.model = model or config.provider.model
+        self.api_key = config.provider.anthropic_api_key
         self.client = httpx.AsyncClient(timeout=300.0)
         self.logger.info(
             "provider.anthropic.init",
@@ -69,7 +69,6 @@ class AnthropicProvider:
             content = msg.get("content", "")
 
             if role == "tool":
-
                 block = {
                     "type": "tool_result",
                     "tool_use_id": msg.get("tool_call_id", ""),

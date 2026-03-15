@@ -142,20 +142,20 @@ def _execute_agent(
 
         config = Config.load()
         provider = None
-        if config.provider == "openai":
+        if config.provider.active == "openai":
             from core.providers.openai import OpenAIProvider
 
             provider = OpenAIProvider()
-        elif config.provider == "anthropic":
+        elif config.provider.active == "anthropic":
             from core.providers.anthropic import AnthropicProvider
 
             provider = AnthropicProvider()
-        elif config.provider == "ollama":
+        elif config.provider.active == "ollama":
             from core.providers.ollama import OllamaProvider
 
             provider = OllamaProvider()
         else:
-            raise ValueError(f"Unsupported provider '{config.provider}'")
+            raise ValueError(f"Unsupported provider '{config.provider.active}'")
 
         if provider is None:
             raise RuntimeError("Provider initialization failed")

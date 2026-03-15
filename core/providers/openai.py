@@ -23,9 +23,9 @@ class OpenAIProvider:
         config = Config.load()
         self.logger = Logger.get("openai.py")
 
-        self.base_url = base_url or config.openai_host
-        self.model = model or config.model
-        self.api_key = config.openai_api_key
+        self.base_url = base_url or config.provider.openai_host
+        self.model = model or config.provider.model
+        self.api_key = config.provider.openai_api_key
         self.client = httpx.AsyncClient(timeout=300.0)
         self.logger.info(
             "provider.openai.init",
