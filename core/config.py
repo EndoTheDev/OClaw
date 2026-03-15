@@ -89,8 +89,10 @@ class Config:
                     file_config = json.load(f)
                     values.update(cls._normalize_keys(file_config))
                 logger.info("config.load.file.success", path=str(config_file))
-            except json.JSONDecodeError, IOError:
-                logger.error("config.load.file.failed", path=str(config_file))
+            except (json.JSONDecodeError, OSError) as e:
+                logger.error(
+                    "config.load.file.failed", path=str(config_file), error=str(e)
+                )
                 pass
 
         env_file_values: dict[str, Any] = {}
@@ -108,8 +110,8 @@ class Config:
                         if key:
                             env_file_values[key] = value
                 logger.info("config.load.env.success", path=str(env_path))
-            except IOError:
-                logger.error("config.load.env.failed", path=str(env_path))
+            except OSError as e:
+                logger.error("config.load.env.failed", path=str(env_path), error=str(e))
                 pass
 
         values.update(cls._normalize_keys(env_file_values))
@@ -203,6 +205,7 @@ class Config:
 
     @staticmethod
     def _convert_types(values: dict[str, Any]) -> dict[str, Any]:
+        logger = Logger.get("config._convert_types")
         converters = {
             "agent.max_iterations": int,
             "server.port": int,
@@ -214,8 +217,14 @@ class Config:
             if key in values and isinstance(values[key], str):
                 try:
                     values[key] = converter(values[key])
-                except ValueError, TypeError:
-                    pass
+                except (ValueError, TypeError) as e:
+                    logger.debug(
+                        "config.normalize.type_conversion.failed",
+                        key=key,
+                        value=values[key],
+                        converter=converter.__name__,
+                        error=str(e),
+                    )
 
         return values
 
