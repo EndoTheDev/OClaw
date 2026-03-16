@@ -2,14 +2,16 @@
 
 ## Overview
 
-OClaw uses a nested JSON configuration structure with four categories:
+OClaw uses a JSON config with four categories:
 
 - **provider** - LLM provider settings (Ollama, OpenAI, Anthropic)
 - **agent** - Agent behavior settings
 - **server** - FastAPI server settings
 - **worker** - Worker process pool settings
 
-Configuration is loaded from `config.json` with environment variable overrides.
+Load order is `config.json`, then `.env`, then process environment variables.
+
+Use `config.json` for non-sensitive settings and `.env` for secrets. With this load order, values in `.env` override `config.json`, and process environment variables override both.
 
 ## Configuration File Format
 
@@ -42,11 +44,11 @@ Configuration is loaded from `config.json` with environment variable overrides.
 
 | Field               | Type   | Default                          | Required | Description                                         |
 | ------------------- | ------ | -------------------------------- | -------- | --------------------------------------------------- |
-| `active`            | string | `"ollama"`                       | Yes      | Active provider: `ollama`, `openai`, or `anthropic` |
-| `ollama.host`       | string | `"http://localhost:11434"`       | Yes\*    | Ollama server URL                                   |
-| `openai.host`       | string | `"https://api.openai.com/v1"`    | Yes\*    | OpenAI API endpoint                                 |
+| `active`            | string | `"ollama"`                       | No       | Active provider: `ollama`, `openai`, or `anthropic` |
+| `ollama.host`       | string | `"http://localhost:11434"`       | No       | Ollama server URL                                   |
+| `openai.host`       | string | `"https://api.openai.com/v1"`    | No       | OpenAI API endpoint                                 |
 | `openai.api_key`    | string | `null`                           | Yes\*    | OpenAI API key                                      |
-| `anthropic.host`    | string | `"https://api.anthropic.com/v1"` | Yes\*    | Anthropic API endpoint                              |
+| `anthropic.host`    | string | `"https://api.anthropic.com/v1"` | No       | Anthropic API endpoint                              |
 | `anthropic.api_key` | string | `null`                           | Yes\*    | Anthropic API key                                   |
 | `model`             | string | `null`                           | Yes      | Model name (provider-specific)                      |
 
@@ -221,10 +223,10 @@ All fields explicitly set:
 **Model not configured:**
 
 ```text
-ValueError: Model not configured. Set 'provider.model' in config.json or PROVIDER_MODEL in .env
+ValueError: Model not configured. Set 'provider.model' in config.json or OLLAMA_MODEL in .env
 ```
 
-**Fix:** Add `provider.model` to config.json or `PROVIDER_MODEL` to .env
+**Fix:** Add `provider.model` to `config.json` or set `PROVIDER_MODEL`.
 
 **Invalid provider:**
 
@@ -247,7 +249,7 @@ Cannot connect to Ollama server
 ### Check Configuration
 
 ```bash
-# View loaded config via health endpoint
+# View key runtime config values
 curl http://localhost:8000/health | jq
 ```
 
@@ -283,15 +285,11 @@ OCLAW_LOG_LEVEL=DEBUG uv run main.py --serve
    cp config.example.json config.json
    ```
 
-2. Edit for your provider:
+2. Edit `config.json` for your provider.
 
-   ```bash
-   # Ollama (local)
-   jq '.provider.active = "ollama" | .provider.model = "qwen3.5:9b"' config.json
-
-   # OpenAI (cloud)
-   jq '.provider.active = "openai" | .provider.model = "gpt-4o-mini"' config.json
-   ```
+   Example values:
+   - Ollama (local): `"active": "ollama"`, `"model": "qwen3.5:9b"`
+   - OpenAI (cloud): `"active": "openai"`, `"model": "gpt-4o-mini"`
 
 3. Start server:
 

@@ -1,140 +1,49 @@
-# OClaw (WIP)
+# OClaw
 
-OClaw is a Python AI agent runtime with:
+OClaw is a Python agent app. It gives you a FastAPI streaming server, a terminal CLI, provider adapters (`ollama`, `openai`, `anthropic`), and local tools/skills.
 
-- FastAPI streaming backend (SSE)
-- Multi-provider support (`ollama`, `openai`, `anthropic`)
-- Interactive CLI client
-- Built-in tool calling (`read_file`, `write_file`, `execute_shell`, `load_tool`, `unload_tool`)
-- Tool execution permission flow in CLI (approve/deny before running a tool)
-- Dynamic skills loaded from `skills/`
+## Quick start
 
-## Requirements
-
-- Python 3.14+
-- [uv](https://docs.astral.sh/uv/)
-- For Ollama mode: reachable Ollama server + installed model
-- For OpenAI mode: API key + model access
-- For Anthropic mode: API key + model access
-
-## Quick Start
-
-### 1) Install
+1. Install dependencies:
 
 ```bash
 uv sync
-cp .env.example .env
 ```
 
-### 2) Configure
+1. Configure provider and model (see [docs/configuration.md](docs/configuration.md)).
 
-You can configure via `config.json`, `.env`, or environment variables.
+   Keep secrets in `.env` and keep non-sensitive settings in `config.json`.
 
-Minimum required values:
-
-#### Ollama
-
-```env
-PROVIDER=ollama
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=qwen3.5:9b
-```
-
-#### OpenAI
-
-```env
-PROVIDER=openai
-OPENAI_HOST=https://api.openai.com/v1
-OPENAI_API_KEY=your_api_key
-OLLAMA_MODEL=gpt-4o-mini
-```
-
-#### Anthropic
-
-```env
-PROVIDER=anthropic
-ANTHROPIC_HOST=https://api.anthropic.com/v1
-ANTHROPIC_API_KEY=your_api_key
-OLLAMA_MODEL=claude-3-5-sonnet-20241022
-```
-
-> Note: `OLLAMA_MODEL` is currently used as the model field for all providers.
-
-### 3) Run backend
+1. Start the server:
 
 ```bash
 uv run main.py --serve
 ```
 
-Default server: `http://0.0.0.0:8000`
-
-### 4) Health check
-
-```bash
-curl http://localhost:8000/health
-```
-
-### 5) Run CLI (new terminal)
+1. Start the CLI in another terminal:
 
 ```bash
 uv run main.py --cli
 ```
 
-## API
+## Minimal usage
 
-- `GET /health` — server + provider config snapshot
-- `POST /chat/stream` — streaming chat events (SSE)
-- `POST /admin/restart` — restart worker pool
-- `POST /chat/permit` — approve or deny pending tool execution request
+- Type a prompt in the CLI and wait for streamed output sections (`[thinking]`, `[response]`, `[tool_call]`, `[tool_output]`).
+- If the agent requests a tool execution, the CLI asks for approval (`y`/`n`).
+- Use `/new` in the CLI to create a new session.
+- Use `exit` or `quit` to stop the CLI.
 
-## Skills (basic)
+API endpoints exposed by the server:
 
-OClaw supports local skills loaded from the `skills/` folder.
+- `GET /health`
+- `POST /chat/stream`
+- `POST /chat/permit`
+- `GET /sessions/list`
+- `POST /sessions/new`
+- `POST /admin/restart`
 
-- Skills are discovered from `skills/*/SKILL.md` at startup
-- Each `SKILL.md` must include YAML frontmatter with `name` and `description`
-- Skill metadata is added to the system prompt automatically
-- Full skill content is injected only for active skills
-- Use `load_tool` with `skill_id` to activate a skill
-- Use `unload_tool` with `skill_id` to deactivate a skill
+## Documentation
 
-## Project Structure
-
-- `main.py` — entrypoint (`--serve`, `--cli`)
-- `server/` — FastAPI gateway + worker process orchestration
-- `core/` — agent loop, config, sessions, skills, logging, providers, tools manager
-- `tools/` — built-in callable tools
-- `skills/` — local skill packages (`SKILL.md`, scripts, references, assets)
-- `clients/cli/` — terminal chat client
-
-## Troubleshooting
-
-- **Cannot connect to backend from CLI**  
-  Start server first: `uv run main.py --serve`
-- **Ollama connection fails in containers**  
-  `localhost` inside containers is local to container; use host-reachable address
-- **Model/provider errors**  
-  Check `PROVIDER`, API key/host, and model name
-
-## Current Status
-
-Implemented:
-
-- Streaming backend + CLI
-- Ollama provider
-- OpenAI provider
-- Anthropic provider
-- Tool autoloading
-- Session persistence
-- Structured logging
-- Tool execution permission workflow
-- Improved provider tool-call handling and CLI argument formatting
-- Dynamic skill metadata autoloading from `skills/`
-- Runtime skill activation/deactivation via `load_tool` and `unload_tool`
-- Active skill prompt injection
-
-Planned next:
-
-- More CLI session management features
-- More provider support
-- Additional config and safety improvements
+- [Configuration](docs/configuration.md)
+- [Architecture](docs/architecture.md)
+- [Development](docs/development.md)
