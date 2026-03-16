@@ -18,12 +18,12 @@
   - Streams events from worker queue back to gateway.
   - Tracks pending permission requests by `request_id`.
 
-- `core/agent.py`
-  - Runs the multi-iteration agent loop.
-  - Loads prior session messages into context.
-  - Calls provider streaming API.
-  - Emits normalized events (`token`, `thinking`, `tool_call`, `tool_end`, `metrics`, `error`, `done`).
-  - Executes tools through `ToolsManager` and persists updated session data.
+- `core/agent/`
+  - `agent.py` coordinates the multi-iteration stream loop.
+  - `session_orchestrator.py` loads session data into context and persists updates via `SessionsManager`.
+  - `message_builder.py` builds provider messages from context + system prompt + active skills.
+  - `chunk_dispatcher.py` normalizes provider chunks into agent events.
+  - `tool_execution_handler.py` handles permission flow and tool execution via `ToolsManager`.
 
 - `core/providers/*.py`
   - Provider adapters for `ollama`, `openai`, `anthropic`.
@@ -54,8 +54,8 @@
 3. CLI calls `POST /chat/stream` with `{message, session_id}`.
 4. Gateway validates session id via `SessionsManager`.
 5. Gateway calls `AgentWorker.run_agent(...)` and streams worker events as SSE.
-6. Worker process creates provider, tools manager, skills manager, and `Agent`.
-7. `Agent.stream(...)` loads session messages, appends user message, and starts provider streaming.
+6. Worker process creates provider, tools manager, skills manager, `SessionsManager`, `ContextManager`, then injects them into `Agent`.
+7. `Agent.stream(...)` initializes session state through `SessionOrchestrator`, appends user message, and starts provider streaming.
 8. Provider chunks are normalized into agent events and sent to client.
 9. If provider emits tool calls, agent emits `permission_request`.
 10. CLI asks for approval and posts decision to `POST /chat/permit` with `request_id`.

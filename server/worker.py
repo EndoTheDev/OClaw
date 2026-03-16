@@ -1,7 +1,8 @@
 import asyncio
 import time
 from concurrent.futures import ProcessPoolExecutor
-from multiprocessing import Manager, Queue
+from multiprocessing import Manager
+from typing import Any
 
 from core.logger import Logger
 
@@ -126,8 +127,8 @@ class AgentWorker:
 def _execute_agent(
     message: str,
     session_id: str,
-    result_queue: Queue,
-    input_queue: Queue,
+    result_queue: Any,
+    input_queue: Any,
     request_id: str | None,
 ) -> None:
     async def run_async():
@@ -136,6 +137,8 @@ def _execute_agent(
         from core.config import Config
         from core.skills import SkillsManager
         from core.tools import ToolsManager
+        from core.sessions import SessionsManager
+        from core.context import ContextManager
 
         logger = Logger.get("worker.py")
         logger.info("worker.execute_agent.start", request_id=request_id)
@@ -162,10 +165,12 @@ def _execute_agent(
 
         tools = ToolsManager()
         skills = SkillsManager()
+        sessions = SessionsManager()
+        context = ContextManager()
 
-        agent = Agent(provider, tools, skills)
+        agent = Agent(provider, tools, skills, sessions, context)
 
-        async for event in agent.stream(
+        async for event in agent.stream(  # type: ignore[arg-type]
             message,
             session_id=session_id,
             request_id=request_id,
