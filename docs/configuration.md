@@ -42,15 +42,15 @@ Use `config.json` for non-sensitive settings and `.env` for secrets. With this l
 
 ### Provider Configuration
 
-| Field               | Type   | Default                          | Required | Description                                         |
-| ------------------- | ------ | -------------------------------- | -------- | --------------------------------------------------- |
+| Field               | Type   | Default                          | Required | Description                                            |
+| ------------------- | ------ | -------------------------------- | -------- | ------------------------------------------------------ |
 | `active`            | string | `"ollama"`                       | No       | Active provider name. Must match a registered provider |
-| `ollama.host`       | string | `"http://localhost:11434"`       | No       | Ollama server URL                                   |
-| `openai.host`       | string | `"https://api.openai.com/v1"`    | No       | OpenAI API endpoint                                 |
-| `openai.api_key`    | string | `null`                           | Yes\*    | OpenAI API key                                      |
-| `anthropic.host`    | string | `"https://api.anthropic.com/v1"` | No       | Anthropic API endpoint                              |
-| `anthropic.api_key` | string | `null`                           | Yes\*    | Anthropic API key                                   |
-| `model`             | string | `null`                           | Yes      | Model name (provider-specific)                      |
+| `ollama.host`       | string | `"http://localhost:11434"`       | No       | Ollama server URL                                      |
+| `openai.host`       | string | `"https://api.openai.com/v1"`    | No       | OpenAI API endpoint                                    |
+| `openai.api_key`    | string | `null`                           | Yes\*    | OpenAI API key                                         |
+| `anthropic.host`    | string | `"https://api.anthropic.com/v1"` | No       | Anthropic API endpoint                                 |
+| `anthropic.api_key` | string | `null`                           | Yes\*    | Anthropic API key                                      |
+| `model`             | string | `null`                           | Yes      | Model name (provider-specific)                         |
 
 \*Required when using that provider
 
@@ -225,7 +225,7 @@ All fields explicitly set:
 **Model not configured:**
 
 ```text
-ValueError: Model not configured. Set 'provider.model' in config.json or OLLAMA_MODEL in .env
+ValueError: Model not configured. Set 'provider.model' in config.json or PROVIDER_MODEL in .env
 ```
 
 **Fix:** Add `provider.model` to `config.json` or set `PROVIDER_MODEL`.
