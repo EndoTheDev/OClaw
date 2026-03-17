@@ -1,9 +1,11 @@
 import asyncio
 import time
+from datetime import datetime, timezone
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Manager
 from queue import Empty
 from typing import Any
+from uuid import uuid4
 
 from core.logger import Logger
 
@@ -63,6 +65,8 @@ class AgentWorker:
             self.logger.error("worker.run_agent.not_started", request_id=request_id)
             raise RuntimeError("Worker pool not started. Call start() first.")
 
+        active_request_id = request_id or str(uuid4())
+
         self.logger.info(
             "worker.run_agent.start", request_id=request_id, message_chars=len(message)
         )
@@ -70,8 +74,7 @@ class AgentWorker:
         result_queue = self._manager.Queue()
         input_queue = self._manager.Queue()
 
-        if request_id:
-            self.pending_inputs[request_id] = input_queue
+        self.pending_inputs[active_request_id] = input_queue
 
         future = self._executor.submit(
             _execute_agent,
@@ -79,8 +82,34 @@ class AgentWorker:
             session_id,
             result_queue,
             input_queue,
-            request_id,
+            active_request_id,
         )
+
+        sequence = 0
+        agent_started = False
+
+        def next_event(
+            event_type: str,
+            payload: dict[str, Any],
+            turn_id: str | None = None,
+        ) -> dict[str, Any]:
+            nonlocal sequence
+            sequence += 1
+            return {
+                "schema_version": "2.0",
+                "event_id": str(uuid4()),
+                "sequence": sequence,
+                "timestamp": datetime.now(timezone.utc)
+                .isoformat(timespec="milliseconds")
+                .replace("+00:00", "Z"),
+                "event_type": event_type,
+                "request_id": active_request_id,
+                "session_id": session_id,
+                "turn_id": turn_id,
+                "payload": payload,
+            }
+
+        terminal_event_emitted = False
 
         try:
             while True:
@@ -89,57 +118,116 @@ class AgentWorker:
                         result_queue,
                         timeout=self.stream_poll_interval,
                     )
-                    if event is None:
-                        if future.done():
-                            exception = future.exception()
-                            if exception is not None:
-                                error_message = str(exception)
-                            else:
-                                error_message = (
-                                    "Worker process ended before terminal stream event"
-                                )
-                            self.logger.error(
-                                "worker.run_agent.future_ended_early",
-                                request_id=request_id,
-                                error=error_message,
-                            )
-                            yield {"type": "error", "message": error_message}
-                            break
+                    events_to_process: list[dict[str, Any]] = []
+                    if event is not None:
+                        events_to_process.append(event)
+                    elif future.done():
+                        while True:
+                            drained = await self._queue_get_nowait_async(result_queue)
+                            if drained is None:
+                                break
+                            events_to_process.append(drained)
+                    else:
                         continue
-                    if event.get("type") == "done":
-                        try:
-                            future.result(timeout=1)
-                        except Exception as e:
+
+                    for current_event in events_to_process:
+                        if "sequence" in current_event and isinstance(
+                            current_event.get("sequence"), int
+                        ):
+                            sequence = int(current_event["sequence"])
+                        if current_event.get("event_type") == "agent_start":
+                            agent_started = True
+                        if current_event.get("event_type") == "error":
                             self.logger.error(
-                                "worker.run_agent.future_error",
-                                request_id=request_id,
-                                error=str(e),
+                                "worker.run_agent.event_error",
+                                request_id=active_request_id,
+                                payload=current_event,
                             )
-                            yield {"type": "error", "message": str(e)}
-                        self.logger.info("worker.run_agent.done", request_id=request_id)
-                        yield event
-                        break
-                    if event.get("type") == "error":
-                        self.logger.error(
-                            "worker.run_agent.event_error",
-                            request_id=request_id,
-                            payload=event,
+                        if "worker_exception" in current_event:
+                            error_message = str(
+                                current_event.get("worker_exception", "Worker failure")
+                            )
+                            if not agent_started:
+                                yield next_event("agent_start", {"status": "started"})
+                                agent_started = True
+                            yield next_event(
+                                "error",
+                                {"message": error_message, "fatal": True},
+                            )
+                            yield next_event("agent_end", {"status": "failed"})
+                            yield next_event("stream_end", {"status": "failed"})
+                            terminal_event_emitted = True
+                            break
+                        if current_event.get("event_type") == "stream_end":
+                            yield current_event
+                            terminal_event_emitted = True
+                            break
+                        yield current_event
+
+                    if terminal_event_emitted:
+                        if future.done():
+                            try:
+                                future.result(timeout=1)
+                            except Exception as e:
+                                self.logger.error(
+                                    "worker.run_agent.future_error",
+                                    request_id=active_request_id,
+                                    error=str(e),
+                                )
+                        self.logger.info(
+                            "worker.run_agent.done", request_id=active_request_id
                         )
-                    yield event
+                        break
+
+                    if future.done() and event is None and not events_to_process:
+                        exception = future.exception()
+                        if exception is not None:
+                            error_message = str(exception)
+                        else:
+                            error_message = (
+                                "Worker process ended before terminal stream event"
+                            )
+                        self.logger.error(
+                            "worker.run_agent.future_ended_early",
+                            request_id=active_request_id,
+                            error=error_message,
+                        )
+                        if not agent_started:
+                            yield next_event("agent_start", {"status": "started"})
+                            agent_started = True
+                        yield next_event(
+                            "error",
+                            {"message": error_message, "fatal": True},
+                        )
+                        yield next_event("agent_end", {"status": "failed"})
+                        yield next_event("stream_end", {"status": "failed"})
+                        terminal_event_emitted = True
+                        break
                 except Exception as e:
                     self.logger.error(
                         "worker.run_agent.communication_error",
-                        request_id=request_id,
+                        request_id=active_request_id,
                         error=str(e),
                     )
-                    yield {
-                        "type": "error",
-                        "message": f"Worker communication error: {e}",
-                    }
+                    if not agent_started:
+                        yield next_event("agent_start", {"status": "started"})
+                        agent_started = True
+                    yield next_event(
+                        "error",
+                        {"message": f"Worker communication error: {e}", "fatal": True},
+                    )
+                    yield next_event("agent_end", {"status": "failed"})
+                    yield next_event("stream_end", {"status": "failed"})
+                    terminal_event_emitted = True
                     break
         finally:
-            if request_id and request_id in self.pending_inputs:
-                del self.pending_inputs[request_id]
+            if not terminal_event_emitted:
+                if not agent_started:
+                    yield next_event("agent_start", {"status": "started"})
+                yield next_event("agent_end", {"status": "failed"})
+                yield next_event("stream_end", {"status": "failed"})
+            if active_request_id in self.pending_inputs:
+                del self.pending_inputs[active_request_id]
 
     async def _queue_get_async(self, queue, timeout: float | None = None):
         loop = asyncio.get_running_loop()
@@ -153,6 +241,17 @@ class AgentWorker:
                 return None
 
         return await loop.run_in_executor(None, get_with_timeout)
+
+    async def _queue_get_nowait_async(self, queue):
+        loop = asyncio.get_running_loop()
+
+        def get_nowait():
+            try:
+                return queue.get_nowait()
+            except Empty:
+                return None
+
+        return await loop.run_in_executor(None, get_nowait)
 
 
 def _execute_agent(
@@ -196,12 +295,10 @@ def _execute_agent(
 
     try:
         asyncio.run(run_async())
-        result_queue.put({"type": "done"})
     except Exception as e:
         Logger.get("worker.py").error(
             "worker.execute_agent.error",
             request_id=request_id,
             error=str(e),
         )
-        result_queue.put({"type": "error", "message": str(e)})
-        result_queue.put({"type": "done"})
+        result_queue.put({"worker_exception": str(e)})

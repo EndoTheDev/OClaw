@@ -10,7 +10,7 @@ from ..providers.base import (
     ToolCallChunk,
     StreamingChunk,
 )
-from .types import StreamOutput
+from .types import ProviderDispatchOutput
 
 if TYPE_CHECKING:
     pass
@@ -26,7 +26,7 @@ class ChunkDispatcher:
         session_id: str,
         request_id: str | None = None,
         iteration: int = 1,
-    ) -> AsyncGenerator[StreamOutput, None]:
+    ) -> AsyncGenerator[ProviderDispatchOutput, None]:
         async for chunk in chunk_stream:
             if isinstance(chunk, ResponseChunk):
                 self.logger.debug(
@@ -36,7 +36,10 @@ class ChunkDispatcher:
                     iteration=iteration,
                     content=chunk.content,
                 )
-                output: StreamOutput = {"type": "token", "content": chunk.content}
+                output: ProviderDispatchOutput = {
+                    "kind": "message_token",
+                    "content": chunk.content,
+                }
                 yield output
 
             elif isinstance(chunk, ThinkingChunk):
@@ -47,7 +50,10 @@ class ChunkDispatcher:
                     iteration=iteration,
                     content=chunk.content,
                 )
-                output: StreamOutput = {"type": "thinking", "content": chunk.content}
+                output: ProviderDispatchOutput = {
+                    "kind": "message_thinking",
+                    "content": chunk.content,
+                }
                 yield output
 
             elif isinstance(chunk, ToolCallChunk):
@@ -60,8 +66,8 @@ class ChunkDispatcher:
                     id=chunk.id,
                     arguments=chunk.arguments,
                 )
-                output: StreamOutput = {
-                    "type": "tool_call",
+                output: ProviderDispatchOutput = {
+                    "kind": "message_tool_call",
                     "name": chunk.name,
                     "id": chunk.id,
                     "args": chunk.arguments,
@@ -76,7 +82,10 @@ class ChunkDispatcher:
                     iteration=iteration,
                     data=chunk.data,
                 )
-                output: StreamOutput = {"type": "metrics", "data": chunk.data}
+                output: ProviderDispatchOutput = {
+                    "kind": "message_metrics",
+                    "data": chunk.data,
+                }
                 yield output
 
             elif isinstance(chunk, DoneChunk):
@@ -90,6 +99,9 @@ class ChunkDispatcher:
                     iteration=iteration,
                     message=chunk.error,
                 )
-                output: StreamOutput = {"type": "error", "message": chunk.error}
+                output: ProviderDispatchOutput = {
+                    "kind": "provider_error",
+                    "message": chunk.error,
+                }
                 yield output
                 return

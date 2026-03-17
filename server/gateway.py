@@ -87,7 +87,7 @@ class AgentGateway:
                 async for event in self.worker.run_agent(
                     request.message, request.session_id, request_id=request_id
                 ):
-                    if event.get("type") == "error":
+                    if event.get("event_type") == "error":
                         self.logger.error(
                             "gateway.chat_stream.error",
                             request_id=request_id,

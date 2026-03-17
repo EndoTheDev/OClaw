@@ -4,23 +4,23 @@
 
 1. Install dependencies:
 
-```bash
-uv sync
-```
+   ```bash
+   uv sync
+   ```
 
-1. Configure provider/model values in `config.json`, `.env`, or process environment.
+2. Configure provider/model values in `config.json`, `.env`, or process environment.
 
-1. Start server:
+3. Start server:
 
-```bash
-uv run main.py --serve
-```
+   ```bash
+   uv run main.py --serve
+   ```
 
-1. Start CLI in another terminal:
+4. Start CLI in another terminal:
 
-```bash
-uv run main.py --cli
-```
+   ```bash
+   uv run main.py --cli
+   ```
 
 ## Common commands
 
@@ -104,5 +104,7 @@ Registration and selection behavior:
   - Confirm API key/host values for remote providers.
 
 - Tool permission flow stalls:
+  - Confirm the stream emitted `tool_execution_update` with `phase: "approval_requested"`.
   - Confirm CLI is waiting for `Allow execution? (y/n):` input.
-  - Ensure `/chat/permit` request uses the same `request_id` as the permission event.
+  - Ensure `POST /chat/permit` uses the same top-level `request_id` as the active `/chat/stream` event envelope.
+  - If `/chat/permit` returns `Request ID not found or expired`, the stream likely already terminated and the pending request was removed by the worker.
