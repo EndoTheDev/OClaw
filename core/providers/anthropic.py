@@ -181,7 +181,7 @@ class AnthropicProvider:
                     if not line or not line.startswith("data:"):
                         continue
 
-                    data_str = line.removeprefix("data: ").strip()
+                    data_str = line[5:].lstrip()
 
                     try:
                         data = json.loads(data_str)
@@ -272,3 +272,10 @@ class AnthropicProvider:
         except Exception as e:
             self.logger.error("provider.anthropic.unexpected_error", error=str(e))
             yield ErrorChunk(error=f"Unexpected error: {e}")
+
+
+PROVIDER_NAME = "anthropic"
+
+
+def create_provider() -> AnthropicProvider:
+    return AnthropicProvider()

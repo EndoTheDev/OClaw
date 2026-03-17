@@ -4,7 +4,7 @@
 
 OClaw uses a JSON config with four categories:
 
-- **provider** - LLM provider settings (Ollama, OpenAI, Anthropic)
+- **provider** - LLM provider settings (for registered providers, such as Ollama/OpenAI/Anthropic)
 - **agent** - Agent behavior settings
 - **server** - FastAPI server settings
 - **worker** - Worker process pool settings
@@ -44,7 +44,7 @@ Use `config.json` for non-sensitive settings and `.env` for secrets. With this l
 
 | Field               | Type   | Default                          | Required | Description                                         |
 | ------------------- | ------ | -------------------------------- | -------- | --------------------------------------------------- |
-| `active`            | string | `"ollama"`                       | No       | Active provider: `ollama`, `openai`, or `anthropic` |
+| `active`            | string | `"ollama"`                       | No       | Active provider name. Must match a registered provider |
 | `ollama.host`       | string | `"http://localhost:11434"`       | No       | Ollama server URL                                   |
 | `openai.host`       | string | `"https://api.openai.com/v1"`    | No       | OpenAI API endpoint                                 |
 | `openai.api_key`    | string | `null`                           | Yes\*    | OpenAI API key                                      |
@@ -53,6 +53,8 @@ Use `config.json` for non-sensitive settings and `.env` for secrets. With this l
 | `model`             | string | `null`                           | Yes      | Model name (provider-specific)                      |
 
 \*Required when using that provider
+
+`provider.active` is resolved at runtime by `core.providers.manager.ProvidersManager`, which autoloads provider modules from `core/providers/*.py`. A provider module is registered when it exports `PROVIDER_NAME` and `create_provider()`. The loader excludes `base.py`, `manager.py`, and files prefixed with `_`.
 
 #### Provider Examples
 
@@ -216,7 +218,7 @@ All fields explicitly set:
 ### Required Fields
 
 - `provider.model` - Must be non-empty string
-- `provider.active` - Must be `ollama`, `openai`, or `anthropic`
+- `provider.active` - Must match a registered provider name
 
 ### Common Errors
 
@@ -234,7 +236,7 @@ ValueError: Model not configured. Set 'provider.model' in config.json or OLLAMA_
 ValueError: Unsupported provider 'xxx'
 ```
 
-**Fix:** Set `provider.active` to `ollama`, `openai`, or `anthropic`
+**Fix:** Set `provider.active` to a registered provider name. Default built-ins are `ollama`, `openai`, and `anthropic`.
 
 **Connection refused:**
 
