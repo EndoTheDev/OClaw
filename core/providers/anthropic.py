@@ -93,8 +93,6 @@ class AnthropicProvider:
                 if content:
                     blocks.append({"type": "text", "text": content})
 
-                import json
-
                 for tool_call in tool_calls:
                     func = tool_call.get("function")
                     if not func:

@@ -5,16 +5,19 @@ import json
 from json import JSONDecodeError
 from typing import Any, AsyncGenerator
 
+from ..logger import Logger
 from ..tools import ToolsManager
-from .types import ToolCall, ToolExecutionOutput
+from .types import ExecutionContext, ToolCall, ToolExecutionOutput
 
 
 class ToolExecutionHandler:
     def __init__(
         self,
         tools_manager: ToolsManager,
+        logger: Logger | None = None,
     ):
         self.tools_manager = tools_manager
+        self.logger = logger or Logger.get("tool_execution_handler.py")
         self._permission_queue: Any = None
 
     def set_permission_queue(self, queue: Any) -> None:
@@ -23,6 +26,7 @@ class ToolExecutionHandler:
     async def execute_tool_calls(
         self,
         tool_calls: list[ToolCall],
+        context: ExecutionContext,
     ) -> AsyncGenerator[ToolExecutionOutput, None]:
         for tool_call in tool_calls:
             function_payload = tool_call.get("function")
@@ -32,6 +36,14 @@ class ToolExecutionHandler:
             tool_name = function_payload.get("name", "")
             tool_args = function_payload.get("arguments", {})
             tool_call_id = tool_call.get("id")
+
+            self.logger.info(
+                "tool.execute",
+                session_id=context.session_id,
+                request_id=context.request_id,
+                iteration=context.iteration,
+                tool_name=tool_name,
+            )
 
             normalized_args = self._normalize_arguments(tool_args)
             execution_start: ToolExecutionOutput = {

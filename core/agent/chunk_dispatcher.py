@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, AsyncGenerator
+from typing import AsyncGenerator
 
 from ..logger import Logger
 from ..providers.base import (
@@ -10,10 +10,7 @@ from ..providers.base import (
     ToolCallChunk,
     StreamingChunk,
 )
-from .types import ProviderDispatchOutput
-
-if TYPE_CHECKING:
-    pass
+from .types import ExecutionContext, ProviderDispatchOutput
 
 
 class ChunkDispatcher:
@@ -23,17 +20,15 @@ class ChunkDispatcher:
     async def dispatch(
         self,
         chunk_stream: AsyncGenerator[StreamingChunk, None],
-        session_id: str,
-        request_id: str | None = None,
-        iteration: int = 1,
+        context: ExecutionContext,
     ) -> AsyncGenerator[ProviderDispatchOutput, None]:
         async for chunk in chunk_stream:
             if isinstance(chunk, ResponseChunk):
                 self.logger.debug(
                     "assistant.response.chunk",
-                    session_id=session_id,
-                    request_id=request_id,
-                    iteration=iteration,
+                    session_id=context.session_id,
+                    request_id=context.request_id,
+                    iteration=context.iteration,
                     content=chunk.content,
                 )
                 output: ProviderDispatchOutput = {
@@ -45,9 +40,9 @@ class ChunkDispatcher:
             elif isinstance(chunk, ThinkingChunk):
                 self.logger.debug(
                     "assistant.thinking.chunk",
-                    session_id=session_id,
-                    request_id=request_id,
-                    iteration=iteration,
+                    session_id=context.session_id,
+                    request_id=context.request_id,
+                    iteration=context.iteration,
                     content=chunk.content,
                 )
                 output: ProviderDispatchOutput = {
@@ -59,9 +54,9 @@ class ChunkDispatcher:
             elif isinstance(chunk, ToolCallChunk):
                 self.logger.info(
                     "assistant.tool_call",
-                    session_id=session_id,
-                    request_id=request_id,
-                    iteration=iteration,
+                    session_id=context.session_id,
+                    request_id=context.request_id,
+                    iteration=context.iteration,
                     name=chunk.name,
                     id=chunk.id,
                     arguments=chunk.arguments,
@@ -77,9 +72,9 @@ class ChunkDispatcher:
             elif isinstance(chunk, MetricsChunk):
                 self.logger.info(
                     "assistant.metrics",
-                    session_id=session_id,
-                    request_id=request_id,
-                    iteration=iteration,
+                    session_id=context.session_id,
+                    request_id=context.request_id,
+                    iteration=context.iteration,
                     data=chunk.data,
                 )
                 output: ProviderDispatchOutput = {
@@ -94,9 +89,9 @@ class ChunkDispatcher:
             elif isinstance(chunk, ErrorChunk):
                 self.logger.error(
                     "agent.error",
-                    session_id=session_id,
-                    request_id=request_id,
-                    iteration=iteration,
+                    session_id=context.session_id,
+                    request_id=context.request_id,
+                    iteration=context.iteration,
                     message=chunk.error,
                 )
                 output: ProviderDispatchOutput = {

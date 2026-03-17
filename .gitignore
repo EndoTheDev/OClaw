@@ -15,3 +15,5 @@ logs/*
 
 .env
 config.json
+
+.ruff_cache/*

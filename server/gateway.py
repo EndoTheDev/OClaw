@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from core.config import Config
 from core.logger import Logger
 from core.sessions import SessionsManager
+from core.agent import ExecutionContext
 from server.worker import AgentWorker
 
 
@@ -67,6 +68,12 @@ class AgentGateway:
         @app.post("/chat/stream")
         async def chat_stream(request: ChatRequest):
             request_id = str(uuid.uuid4())
+            context = ExecutionContext(
+                session_id=request.session_id,
+                request_id=request_id,
+                iteration=1,
+                max_iterations=5,
+            )
             try:
                 self.sessions_manager.get_session_by_id(request.session_id)
             except ValueError:
@@ -85,7 +92,7 @@ class AgentGateway:
                 import json
 
                 async for event in self.worker.run_agent(
-                    request.message, request.session_id, request_id=request_id
+                    request.message, request.session_id, context
                 ):
                     if event.get("event_type") == "error":
                         self.logger.error(

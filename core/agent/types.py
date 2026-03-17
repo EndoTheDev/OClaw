@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from multiprocessing import Queue
 from typing import Any, Literal, NotRequired, TypedDict
 
 
@@ -87,10 +88,40 @@ StreamOutput = StreamEventEnvelope
 
 @dataclass
 class ExecutionContext:
+    """Runtime context for agent execution lifecycle."""
+
     session_id: str
-    request_id: str | None
-    iteration: int
-    max_iterations: int
+    request_id: str | None = None
+    iteration: int = 1
+    max_iterations: int = 5
+    turn_id: str | None = None
+    input_queue: Queue | None = None
+
+    def can_continue(self) -> bool:
+        """Check if another iteration is allowed."""
+        return self.iteration <= self.max_iterations
+
+    def next_iteration(self) -> ExecutionContext:
+        """Create new context with incremented iteration."""
+        return ExecutionContext(
+            session_id=self.session_id,
+            request_id=self.request_id,
+            iteration=self.iteration + 1,
+            max_iterations=self.max_iterations,
+            turn_id=None,
+            input_queue=self.input_queue,
+        )
+
+    def with_turn(self, turn_id: str) -> ExecutionContext:
+        """Create new context with specific turn_id."""
+        return ExecutionContext(
+            session_id=self.session_id,
+            request_id=self.request_id,
+            iteration=self.iteration,
+            max_iterations=self.max_iterations,
+            turn_id=turn_id,
+            input_queue=self.input_queue,
+        )
 
 
 @dataclass
