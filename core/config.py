@@ -250,5 +250,5 @@ class Config:
     def validate(self) -> None:
         if not self.provider.model or not self.provider.model.strip():
             raise ValueError(
-                "Model not configured. Set 'provider.model' in config.json or OLLAMA_MODEL in .env"
+                "Model not configured. Set 'provider.model' in config.json or PROVIDER_MODEL in .env"
             )
