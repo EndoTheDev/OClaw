@@ -15,6 +15,7 @@
 - `server/worker.py`
   - Manages a `ProcessPoolExecutor` and `multiprocessing.Manager` queues.
   - Runs one agent execution in a worker process via `_execute_agent`.
+  - Resolves provider instances through `core.providers.manager.ProvidersManager`.
   - Streams events from worker queue back to gateway.
   - Tracks pending permission requests by `request_id`.
 
@@ -26,9 +27,15 @@
   - `tool_execution_handler.py` handles permission flow and tool execution via `ToolsManager`.
 
 - `core/providers/*.py`
-  - Provider adapters for `ollama`, `openai`, `anthropic`.
+  - Provider adapters for `ollama`, `openai`, `anthropic`, and future providers.
   - Convert internal message/tool format to provider-specific payloads.
   - Convert provider stream chunks into common chunk types.
+  - Export `PROVIDER_NAME` and `create_provider()` for autoload registration.
+
+- `core/providers/manager.py`
+  - Autoloads `core/providers/*.py` modules, excluding `base.py`, `manager.py`, and private files.
+  - Registers provider factories by `PROVIDER_NAME`.
+  - Creates provider instances from `config.provider.active`.
 
 - `core/sessions.py`
   - Session persistence in `.sessions/*.jsonl`.

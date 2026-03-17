@@ -67,13 +67,24 @@ class OllamaProvider:
                     if not func:
                         continue
                     arguments = func.get("arguments", {})
+                    parsed_arguments = arguments
+                    if isinstance(arguments, str):
+                        try:
+                            decoded_arguments = json.loads(arguments)
+                            parsed_arguments = (
+                                decoded_arguments
+                                if isinstance(decoded_arguments, dict)
+                                else {}
+                            )
+                        except json.JSONDecodeError:
+                            parsed_arguments = {}
+                    elif not isinstance(arguments, dict):
+                        parsed_arguments = {}
                     formatted_tc = {
                         "type": "function",
                         "function": {
                             "name": func.get("name", ""),
-                            "arguments": arguments
-                            if isinstance(arguments, dict)
-                            else json.loads(arguments),
+                            "arguments": parsed_arguments,
                         },
                     }
                     if "id" in tc:
@@ -193,3 +204,10 @@ class OllamaProvider:
         except Exception as e:
             self.logger.error("provider.ollama.unexpected_error", error=str(e))
             yield ErrorChunk(error=f"Unexpected error: {e}")
+
+
+PROVIDER_NAME = "ollama"
+
+
+def create_provider() -> OllamaProvider:
+    return OllamaProvider()

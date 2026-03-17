@@ -2,6 +2,7 @@ import asyncio
 import time
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Manager
+from queue import Empty
 from typing import Any
 
 from core.logger import Logger
@@ -15,6 +16,7 @@ class AgentWorker:
         self._executor: ProcessPoolExecutor | None = None
         self._manager: Manager | None = None  # type: ignore
         self.pending_inputs = {}
+        self.stream_poll_interval = 0.5
 
     def start(self) -> None:
         self.logger.info("worker.start", num_processes=self.num_processes)
@@ -83,7 +85,27 @@ class AgentWorker:
         try:
             while True:
                 try:
-                    event = await self._queue_get_async(result_queue)
+                    event = await self._queue_get_async(
+                        result_queue,
+                        timeout=self.stream_poll_interval,
+                    )
+                    if event is None:
+                        if future.done():
+                            exception = future.exception()
+                            if exception is not None:
+                                error_message = str(exception)
+                            else:
+                                error_message = (
+                                    "Worker process ended before terminal stream event"
+                                )
+                            self.logger.error(
+                                "worker.run_agent.future_ended_early",
+                                request_id=request_id,
+                                error=error_message,
+                            )
+                            yield {"type": "error", "message": error_message}
+                            break
+                        continue
                     if event.get("type") == "done":
                         try:
                             future.result(timeout=1)
@@ -119,9 +141,18 @@ class AgentWorker:
             if request_id and request_id in self.pending_inputs:
                 del self.pending_inputs[request_id]
 
-    async def _queue_get_async(self, queue):
+    async def _queue_get_async(self, queue, timeout: float | None = None):
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, queue.get)
+
+        def get_with_timeout():
+            try:
+                if timeout is None:
+                    return queue.get()
+                return queue.get(timeout=timeout)
+            except Empty:
+                return None
+
+        return await loop.run_in_executor(None, get_with_timeout)
 
 
 def _execute_agent(
@@ -139,29 +170,14 @@ def _execute_agent(
         from core.tools import ToolsManager
         from core.sessions import SessionsManager
         from core.context import ContextManager
+        from core.providers.manager import ProvidersManager
 
         logger = Logger.get("worker.py")
         logger.info("worker.execute_agent.start", request_id=request_id)
 
         config = Config.load()
-        provider = None
-        if config.provider.active == "openai":
-            from core.providers.openai import OpenAIProvider
-
-            provider = OpenAIProvider()
-        elif config.provider.active == "anthropic":
-            from core.providers.anthropic import AnthropicProvider
-
-            provider = AnthropicProvider()
-        elif config.provider.active == "ollama":
-            from core.providers.ollama import OllamaProvider
-
-            provider = OllamaProvider()
-        else:
-            raise ValueError(f"Unsupported provider '{config.provider.active}'")
-
-        if provider is None:
-            raise RuntimeError("Provider initialization failed")
+        providers = ProvidersManager()
+        provider = providers.create(config.provider.active)
 
         tools = ToolsManager()
         skills = SkillsManager()
@@ -170,7 +186,7 @@ def _execute_agent(
 
         agent = Agent(provider, tools, skills, sessions, context)
 
-        async for event in agent.stream(  # type: ignore[arg-type]
+        async for event in agent.stream(
             message,
             session_id=session_id,
             request_id=request_id,

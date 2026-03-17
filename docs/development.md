@@ -78,11 +78,16 @@ Provider contract from `core.providers.base.Provider`:
 
 - implement `chat(messages, tools=None)` as an async generator
 - yield chunk types compatible with `ResponseChunk`, `ThinkingChunk`, `ToolCallChunk`, `MetricsChunk`, `DoneChunk`, `ErrorChunk`
+- export `PROVIDER_NAME` as the provider id string
+- export `create_provider()` that returns a provider instance
 
-Current selection behavior:
+Registration and selection behavior:
 
-- Worker selects provider in `_execute_agent` using `config.provider.active`.
-- Supported values in code path are `ollama`, `openai`, `anthropic`.
+- `ProvidersManager.autoload()` scans `core/providers/*.py` and loads provider modules dynamically.
+- Loader excludes `base.py`, `manager.py`, and files with names that start with `_`.
+- `ProvidersManager` registers modules that expose both `PROVIDER_NAME` and `create_provider()`.
+- Worker resolves `config.provider.active` through `ProvidersManager.create(...)`.
+- Existing values `ollama`, `openai`, and `anthropic` are still supported.
 
 ## Basic troubleshooting
 

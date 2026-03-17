@@ -131,7 +131,7 @@ class OpenAIProvider:
                     if not line or not line.startswith("data:"):
                         continue
 
-                    data_str = line.removeprefix("data: ").strip()
+                    data_str = line[5:].lstrip()
 
                     if data_str == "[DONE]":
                         for tc_idx, tc_data in accumulated_tool_calls.items():
@@ -208,3 +208,10 @@ class OpenAIProvider:
         except Exception as e:
             self.logger.error("provider.openai.unexpected_error", error=str(e))
             yield ErrorChunk(error=f"Unexpected error: {e}")
+
+
+PROVIDER_NAME = "openai"
+
+
+def create_provider() -> OpenAIProvider:
+    return OpenAIProvider()
