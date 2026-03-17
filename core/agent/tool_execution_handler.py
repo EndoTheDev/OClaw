@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-from asyncio import Queue
 from json import JSONDecodeError
 from typing import Any, AsyncGenerator
 
 from ..tools import ToolsManager
-from .types import StreamOutput, ToolCall, ToolEnd
+from .types import ToolCall, ToolExecutionOutput
 
 
 class ToolExecutionHandler:
@@ -24,8 +23,7 @@ class ToolExecutionHandler:
     async def execute_tool_calls(
         self,
         tool_calls: list[ToolCall],
-        request_id: str | None = None,
-    ) -> AsyncGenerator[StreamOutput, None]:
+    ) -> AsyncGenerator[ToolExecutionOutput, None]:
         for tool_call in tool_calls:
             function_payload = tool_call.get("function")
             if not function_payload:
@@ -36,15 +34,23 @@ class ToolExecutionHandler:
             tool_call_id = tool_call.get("id")
 
             normalized_args = self._normalize_arguments(tool_args)
+            execution_start: ToolExecutionOutput = {
+                "kind": "tool_execution_start",
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "args": normalized_args,
+            }
+            yield execution_start
 
             if self._permission_queue is not None:
-                permission_output: StreamOutput = {
-                    "type": "permission_request",
-                    "name": tool_name,
+                approval_requested: ToolExecutionOutput = {
+                    "kind": "tool_execution_update",
+                    "tool_name": tool_name,
+                    "tool_call_id": tool_call_id,
                     "args": normalized_args,
-                    "request_id": request_id or "",
+                    "phase": "approval_requested",
                 }
-                yield permission_output
+                yield approval_requested
 
                 loop = asyncio.get_running_loop()
                 approved = await loop.run_in_executor(None, self._permission_queue.get)
@@ -54,23 +60,52 @@ class ToolExecutionHandler:
                         f"DENIED: The user has explicitly rejected your request "
                         f"to execute the '{tool_name}' tool."
                     )
-                    denied_output: ToolEnd = {
-                        "type": "tool_end",
+                    approval_denied: ToolExecutionOutput = {
+                        "kind": "tool_execution_update",
                         "tool_name": tool_name,
                         "tool_call_id": tool_call_id,
+                        "phase": "approval_denied",
+                    }
+                    yield approval_denied
+                    denied_output: ToolExecutionOutput = {
+                        "kind": "tool_execution_end",
+                        "tool_name": tool_name,
+                        "tool_call_id": tool_call_id,
+                        "status": "denied",
                         "result": result_msg,
                     }
                     yield denied_output
                     continue
 
-            tool_result = await self.tools_manager.execute(tool_name, normalized_args)
-            tool_end_output: ToolEnd = {
-                "type": "tool_end",
-                "tool_name": tool_name,
-                "tool_call_id": tool_call_id,
-                "result": tool_result,
-            }
-            yield tool_end_output
+                approval_granted: ToolExecutionOutput = {
+                    "kind": "tool_execution_update",
+                    "tool_name": tool_name,
+                    "tool_call_id": tool_call_id,
+                    "phase": "approval_granted",
+                }
+                yield approval_granted
+
+            try:
+                tool_result = await self.tools_manager.execute(
+                    tool_name, normalized_args
+                )
+                tool_end_output: ToolExecutionOutput = {
+                    "kind": "tool_execution_end",
+                    "tool_name": tool_name,
+                    "tool_call_id": tool_call_id,
+                    "status": "succeeded",
+                    "result": tool_result,
+                }
+                yield tool_end_output
+            except Exception as error:
+                tool_end_output: ToolExecutionOutput = {
+                    "kind": "tool_execution_end",
+                    "tool_name": tool_name,
+                    "tool_call_id": tool_call_id,
+                    "status": "failed",
+                    "error": str(error),
+                }
+                yield tool_end_output
 
     def _normalize_arguments(self, args: dict[str, Any] | str) -> dict[str, Any]:
         if isinstance(args, str):

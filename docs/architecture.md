@@ -64,14 +64,28 @@
 6. Worker process creates provider, tools manager, skills manager, `SessionsManager`, `ContextManager`, then injects them into `Agent`.
 7. `Agent.stream(...)` initializes session state through `SessionOrchestrator`, appends user message, and starts provider streaming.
 8. Provider chunks are normalized into agent events and sent to client.
-9. If provider emits tool calls, agent emits `permission_request`.
-10. CLI asks for approval and posts decision to `POST /chat/permit` with `request_id`.
-11. Worker receives approval from pending queue:
-    - approved: executes tool, emits `tool_end`, appends tool result to context.
-    - denied: emits denial message as `tool_end`, appends denial to context.
-12. Agent continues iterations until no further tool calls, then emits `done`.
-13. Agent writes updated session messages to `.sessions/*.jsonl`.
-14. Gateway ends SSE stream after receiving terminal `done` event.
+9. Agent emits `agent_start`, then opens each iteration with `turn_start` and `message_start`.
+10. Provider chunks are emitted as `message_update` events:
+    - assistant text deltas: `payload.channel = "content"` + `payload.delta`
+    - reasoning deltas: `payload.channel = "thinking"` + `payload.delta`
+    - tool calls: `payload.tool_call = {name, id, args}`
+    - metrics: `payload.metrics`
+11. Agent closes each assistant message with `message_end` and includes final `content`, `thinking`, and `tool_call_count`.
+12. If tool calls exist, agent runs tool execution lifecycle events:
+    - `tool_execution_start`
+    - `tool_execution_update` with `phase = "approval_requested"`
+    - CLI sends decision to `POST /chat/permit` with the stream `request_id`
+    - `tool_execution_update` with `phase = "approval_granted"` or `phase = "approval_denied"`
+    - `tool_execution_end` with `status = "succeeded" | "failed" | "denied"`
+13. Agent emits `turn_end` for each iteration. On failed or denied tool execution, it also emits terminal `error` (`fatal: true`).
+14. Agent persists session updates to `.sessions/*.jsonl` and emits terminal lifecycle events in order: `agent_end`, then `stream_end`.
+15. Gateway forwards all events as SSE and closes the HTTP stream after terminal `stream_end`.
+
+## Terminal semantics (v2)
+
+- `stream_end` is the only stream terminal event. Consumers should treat it as definitive end-of-stream.
+- `agent_end` always precedes `stream_end` and reports aggregate agent status.
+- `error` is terminal only when `payload.fatal = true`; in current implementation, fatal errors are followed by `agent_end` and `stream_end`.
 
 ## Runtime boundaries
 

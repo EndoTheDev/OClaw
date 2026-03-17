@@ -8,20 +8,24 @@ class OClawCLI:
         self.base_url = base_url
         self.client = httpx.AsyncClient(timeout=None)
 
-    def _classify_event(self, data: dict) -> str:
-        """Map event type to section type."""
-        event_type = data.get("type", "")
-
-        if event_type == "tool_call":
-            name = data.get("name", "unknown")
-            args = data.get("args", {})
-            return f"tool_call:{name}({self._format_args(args)})"
-        elif event_type == "tool_end":
+    def _classify_event(self, event_type: str, payload: dict) -> str | None:
+        if event_type == "message_update":
+            if payload.get("channel") == "thinking":
+                return "thinking"
+            if "tool_call" in payload:
+                tool_call = payload.get("tool_call", {})
+                name = tool_call.get("name", "unknown")
+                args = tool_call.get("args", {})
+                return f"tool_call:{name}({self._format_args(args)})"
+            if payload.get("channel") == "content":
+                return "response"
+        if event_type == "tool_execution_start":
+            return "tool_call"
+        if event_type == "tool_execution_end":
             return "tool_output"
-        elif event_type == "thinking":
-            return "thinking"
-        else:
-            return "response"
+        if event_type == "error":
+            return "error"
+        return None
 
     def _format_args(self, args: dict[str, object] | str) -> str:
         if isinstance(args, str):
@@ -49,17 +53,28 @@ class OClawCLI:
     def _print_header(self, section_type: str):
         if section_type.startswith("tool_call:"):
             print(f"\n[{section_type}] ", end="", flush=True)
+        elif section_type == "tool_call":
+            print("\n[tool_execution] ", end="", flush=True)
         elif section_type == "tool_output":
             print("\n[tool_output]\n", end="", flush=True)
         elif section_type == "thinking":
             print("\n[thinking] ", end="", flush=True)
         elif section_type == "response":
             print("\n[response] ", end="", flush=True)
+        elif section_type == "error":
+            print("\n[error] ", end="", flush=True)
 
-    def _extract_content(self, data: dict) -> str:
-        for key in ["content", "text", "result", "output"]:
-            if key in data:
-                return str(data[key])
+    def _extract_content(self, event_type: str, payload: dict) -> str:
+        if event_type == "message_update":
+            if payload.get("channel") in {"content", "thinking"}:
+                return str(payload.get("delta", ""))
+        if event_type == "tool_execution_end":
+            if "result" in payload:
+                return str(payload.get("result"))
+            if "error" in payload:
+                return str(payload.get("error"))
+        if event_type == "error":
+            return str(payload.get("message", ""))
         return ""
 
     async def _fetch_latest_session_id(self) -> str:
@@ -93,35 +108,50 @@ class OClawCLI:
                         continue
 
                     data = json.loads(line[6:])
+                    if data.get("schema_version") != "2.0":
+                        continue
 
-                    content = self._extract_content(data)
-                    event_type = data.get("type", "")
+                    event_type = data.get("event_type", "")
+                    payload = data.get("payload", {})
+                    request_id = data.get("request_id", "")
 
-                    if event_type == "permission_request":
-                        name = data.get("name")
-                        args = data.get("args")
-                        request_id = data.get("request_id")
-
-                        formatted_args = self._format_args(args)
-                        print(
-                            f"\n\nSystem: The agent wants to run the tool '{name}({formatted_args})'."
-                        )
-                        ans = input("Allow execution? (y/n): ")
-
-                        async with httpx.AsyncClient() as permit_client:
-                            await permit_client.post(
-                                f"{self.base_url}/chat/permit",
-                                json={
-                                    "request_id": request_id,
-                                    "approved": ans.lower().startswith("y"),
-                                },
+                    if event_type == "tool_execution_update":
+                        phase = payload.get("phase")
+                        if phase == "approval_requested":
+                            tool_name = payload.get("tool_name")
+                            tool_args = payload.get("args", {})
+                            formatted_args = self._format_args(tool_args)
+                            print(
+                                f"\n\nSystem: The agent wants to run the tool '{tool_name}({formatted_args})'."
                             )
+                            ans = input("Allow execution? (y/n): ")
+
+                            async with httpx.AsyncClient() as permit_client:
+                                await permit_client.post(
+                                    f"{self.base_url}/chat/permit",
+                                    json={
+                                        "request_id": request_id,
+                                        "approved": ans.lower().startswith("y"),
+                                    },
+                                )
                         continue
 
-                    if event_type in ("token", "metrics", "done") and not content:
+                    if event_type in {
+                        "agent_start",
+                        "turn_start",
+                        "message_start",
+                        "message_end",
+                        "turn_end",
+                        "agent_end",
+                        "stream_end",
+                    }:
                         continue
 
-                    section_type = self._classify_event(data)
+                    content = self._extract_content(event_type, payload)
+                    section_type = self._classify_event(event_type, payload)
+
+                    if section_type is None:
+                        continue
 
                     if section_type != current_section:
                         if current_section is not None:

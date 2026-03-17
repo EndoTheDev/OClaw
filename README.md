@@ -28,10 +28,12 @@ uv run main.py --cli
 
 ## Minimal usage
 
-- Type a prompt in the CLI and wait for streamed output sections (`[thinking]`, `[response]`, `[tool_call]`, `[tool_output]`).
+- Type a prompt in the CLI and watch streamed sections as they arrive (`[thinking]`, `[response]`, `[tool_call:<name>(...)]`, `[tool_execution]`, `[tool_output]`).
 - If the agent requests a tool execution, the CLI asks for approval (`y`/`n`).
 - Use `/new` in the CLI to create a new session.
 - Use `exit` or `quit` to stop the CLI.
+
+The stream protocol is v2-only (`schema_version: "2.0"`). See [docs/event-stream-protocol.md](docs/event-stream-protocol.md) for the canonical event envelope, event types, and lifecycle.
 
 API endpoints exposed by the server:
 
@@ -47,3 +49,4 @@ API endpoints exposed by the server:
 - [Configuration](docs/configuration.md)
 - [Architecture](docs/architecture.md)
 - [Development](docs/development.md)
+- [Event stream protocol (v2)](docs/event-stream-protocol.md)

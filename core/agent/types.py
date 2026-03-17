@@ -15,61 +15,74 @@ class ToolCall(TypedDict):
     id: NotRequired[str]
 
 
-class PermissionRequest(TypedDict):
-    type: Literal["permission_request"]
-    name: str
-    args: dict[str, Any]
+EventType = Literal[
+    "agent_start",
+    "turn_start",
+    "message_start",
+    "message_update",
+    "message_end",
+    "tool_execution_start",
+    "tool_execution_update",
+    "tool_execution_end",
+    "turn_end",
+    "agent_end",
+    "error",
+    "stream_end",
+]
+
+ApprovalPhase = Literal[
+    "approval_requested",
+    "approval_granted",
+    "approval_denied",
+]
+
+ToolExecutionStatus = Literal["succeeded", "failed", "denied"]
+
+
+class StreamEventEnvelope(TypedDict):
+    schema_version: Literal["2.0"]
+    event_id: str
+    sequence: int
+    timestamp: str
+    event_type: EventType
     request_id: str
+    session_id: str
+    turn_id: str | None
+    payload: dict[str, Any]
 
 
-class TokenOutput(TypedDict):
-    type: Literal["token"]
-    content: str
+class ProviderDispatchOutput(TypedDict):
+    kind: Literal[
+        "message_token",
+        "message_thinking",
+        "message_tool_call",
+        "message_metrics",
+        "provider_error",
+    ]
+    content: NotRequired[str]
+    name: NotRequired[str]
+    id: NotRequired[str | None]
+    args: NotRequired[dict[str, Any]]
+    data: NotRequired[dict[str, Any]]
+    message: NotRequired[str]
 
 
-class ThinkingOutput(TypedDict):
-    type: Literal["thinking"]
-    content: str
-
-
-class ToolCallOutput(TypedDict):
-    type: Literal["tool_call"]
-    name: str
-    id: str | None
-    args: dict[str, Any]
-
-
-class ToolEnd(TypedDict):
-    type: Literal["tool_end"]
+class ToolExecutionOutput(TypedDict):
+    kind: Literal[
+        "tool_execution_start",
+        "tool_execution_update",
+        "tool_execution_end",
+    ]
     tool_name: str
-    tool_call_id: NotRequired[str | None]
-    result: Any
+    tool_call_id: str | None
+    args: NotRequired[dict[str, Any]]
+    phase: NotRequired[ApprovalPhase]
+    status: NotRequired[ToolExecutionStatus]
+    result: NotRequired[Any]
+    error: NotRequired[str]
 
 
-class MetricsOutput(TypedDict):
-    type: Literal["metrics"]
-    data: dict[str, Any]
-
-
-class ErrorOutput(TypedDict):
-    type: Literal["error"]
-    message: str
-
-
-class DoneOutput(TypedDict):
-    type: Literal["done"]
-
-
-StreamOutput = (
-    PermissionRequest
-    | TokenOutput
-    | ThinkingOutput
-    | ToolCallOutput
-    | ToolEnd
-    | MetricsOutput
-    | ErrorOutput
-    | DoneOutput
-)
+StreamOutput = StreamEventEnvelope
 
 
 @dataclass
