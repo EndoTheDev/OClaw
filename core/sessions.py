@@ -57,7 +57,7 @@ class SessionsManager:
 
     def list_sessions(self) -> list[SessionRecord]:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
-        files = sorted(self.sessions_dir.glob("*.jsonl"), reverse=True)
+        files = list(self.sessions_dir.glob("*.jsonl"))
         sessions = []
         for file_path in files:
             session = self._load_session(file_path)
@@ -66,12 +66,14 @@ class SessionsManager:
 
     def get_latest_session_id(self) -> str:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
-        files = sorted(self.sessions_dir.glob("*.jsonl"), reverse=True)
-        if not files:
+        sessions = self.list_sessions()
+        if not sessions:
             new_session = self.create_new_session()
             return new_session.metadata.session_id
-        metadata = json.loads(open(files[0], "r", encoding="utf-8").readline())
-        return metadata["session_id"]
+        sessions_sorted = sorted(
+            sessions, key=lambda s: s.metadata.date_created, reverse=True
+        )
+        return sessions_sorted[0].metadata.session_id
 
     def get_session_by_id(self, session_id: str) -> SessionRecord:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
@@ -155,4 +157,4 @@ class SessionsManager:
         return SessionRecord(file_path=file_path, metadata=metadata, messages=messages)
 
     def _now_iso(self) -> str:
-        return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        return datetime.now(timezone.utc).isoformat(timespec="microseconds")

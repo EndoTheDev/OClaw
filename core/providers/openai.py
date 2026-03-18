@@ -194,6 +194,23 @@ class OpenAIProvider:
                                     "arguments"
                                 ]
 
+                        # Yield incremental tool call chunks for each update
+                        for idx, tc_data in accumulated_tool_calls.items():
+                            if tc_data["name"]:
+                                try:
+                                    args_dict = (
+                                        json.loads(tc_data["arguments"])
+                                        if tc_data["arguments"]
+                                        else {}
+                                    )
+                                except json.JSONDecodeError:
+                                    args_dict = {}
+                                yield ToolCallChunk(
+                                    id=tc_data.get("id", ""),
+                                    name=tc_data["name"],
+                                    arguments=args_dict,
+                                )
+
         except httpx.HTTPStatusError as e:
             self.logger.error(
                 "provider.openai.http_error",

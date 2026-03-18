@@ -26,7 +26,10 @@ class WriteFileTool(Tool):
             "required": ["path", "content"],
         }
 
-    async def execute(self, path: str, content: str) -> str:
+    async def execute(self, **kwargs) -> str:
+        path = kwargs["path"]
+        content = kwargs["content"]
+
         def _write():
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)

@@ -1,0 +1,20 @@
+{
+  "provider": {
+    "active": "ollama",
+    "ollama_host": "http://localhost:11434",
+    "openai_host": "https://api.openai.com/v1",
+    "anthropic_host": "https://api.anthropic.com/v1",
+    "model": "test-model"
+  },
+  "agent": {
+    "max_iterations": 5
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000
+  },
+  "worker": {
+    "num_processes": 4,
+    "timeout": 300
+  }
+}

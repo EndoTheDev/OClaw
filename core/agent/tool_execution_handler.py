@@ -64,8 +64,13 @@ class ToolExecutionHandler:
                 }
                 yield approval_requested
 
-                loop = asyncio.get_running_loop()
-                approved = await loop.run_in_executor(None, self._permission_queue.get)
+                if isinstance(self._permission_queue, asyncio.Queue):
+                    approved = await self._permission_queue.get()
+                else:
+                    loop = asyncio.get_running_loop()
+                    approved = await loop.run_in_executor(
+                        None, self._permission_queue.get
+                    )
 
                 if not approved:
                     result_msg = (
@@ -96,6 +101,15 @@ class ToolExecutionHandler:
                     "phase": "approval_granted",
                 }
                 yield approval_granted
+
+            executing_update: ToolExecutionOutput = {
+                "kind": "tool_execution_update",
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "phase": "executing",
+                "args": normalized_args,
+            }
+            yield executing_update
 
             try:
                 tool_result = await self.tools_manager.execute(

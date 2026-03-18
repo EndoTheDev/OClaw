@@ -25,7 +25,9 @@ class ExecuteShellTool(Tool):
             "required": ["command"],
         }
 
-    async def execute(self, command: str) -> str:
+    async def execute(self, **kwargs) -> str:
+        command = kwargs["command"]
+        proc = None
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
@@ -42,10 +44,11 @@ class ExecuteShellTool(Tool):
             return output if output else "Command executed successfully (no output)"
 
         except asyncio.TimeoutError:
-            try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
+            if proc:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
             return "Error: Command timed out after 30 seconds"
         except Exception as e:
             return f"Error: {str(e)}"

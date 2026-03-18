@@ -32,6 +32,7 @@ EventType = Literal[
 ]
 
 ApprovalPhase = Literal[
+    "executing",
     "approval_requested",
     "approval_granted",
     "approval_denied",
