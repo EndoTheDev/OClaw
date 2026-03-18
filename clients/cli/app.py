@@ -122,7 +122,7 @@ class OClawCLI:
                             tool_args = payload.get("args", {})
                             formatted_args = self._format_args(tool_args)
                             print(
-                                f"\n\nSystem: The agent wants to run the tool '{tool_name}({formatted_args})'."
+                                f"\n\n[system]: The agent wants to run the tool '{tool_name}({formatted_args})'."
                             )
                             ans = input("Allow execution? (y/n): ")
 
@@ -208,6 +208,8 @@ class OClawCLI:
 
                 if not user_input:
                     continue
+
+                user_input = user_input.encode("utf-8", "ignore").decode("utf-8")
 
                 session_id = await self._fetch_latest_session_id()
                 await self._stream_response(user_input, session_id)

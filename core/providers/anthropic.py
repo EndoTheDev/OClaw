@@ -93,8 +93,6 @@ class AnthropicProvider:
                 if content:
                     blocks.append({"type": "text", "text": content})
 
-                import json
-
                 for tool_call in tool_calls:
                     func = tool_call.get("function")
                     if not func:
@@ -188,6 +186,10 @@ class AnthropicProvider:
                     except json.JSONDecodeError:
                         continue
 
+                    # Handle both array and object formats
+                    if isinstance(data, list):
+                        data = data[0] if data else {}
+
                     event_type = data.get("type")
 
                     if event_type == "content_block_start":
@@ -199,6 +201,12 @@ class AnthropicProvider:
                             accumulated_tool_input[current_tool_name] = ""
                             accumulated_tool_ids[current_tool_name] = content_block.get(
                                 "id"
+                            )
+                            # Yield initial ToolCallChunk with empty arguments
+                            yield ToolCallChunk(
+                                name=current_tool_name,
+                                arguments={},
+                                id=accumulated_tool_ids[current_tool_name],
                             )
 
                     elif event_type == "content_block_delta":

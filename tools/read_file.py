@@ -22,7 +22,9 @@ class ReadFileTool(Tool):
             "required": ["path"],
         }
 
-    async def execute(self, path: str) -> str:
+    async def execute(self, **kwargs) -> str:
+        path = kwargs["path"]
+
         def _read():
             with open(path, "r", encoding="utf-8") as f:
                 return f.read()

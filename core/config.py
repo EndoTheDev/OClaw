@@ -43,7 +43,6 @@ class Config:
     worker: WorkerConfig
 
     _ENV_MAPPING = {
-        # Provider
         "PROVIDER_ACTIVE": "provider.active",
         "PROVIDER_OLLAMA_HOST": "provider.ollama_host",
         "PROVIDER_OPENAI_HOST": "provider.openai_host",
@@ -51,12 +50,9 @@ class Config:
         "PROVIDER_ANTHROPIC_HOST": "provider.anthropic_host",
         "PROVIDER_ANTHROPIC_API_KEY": "provider.anthropic_api_key",
         "PROVIDER_MODEL": "provider.model",
-        # Agent
         "AGENT_MAX_ITERATIONS": "agent.max_iterations",
-        # Server
         "SERVER_HOST": "server.host",
         "SERVER_PORT": "server.port",
-        # Worker
         "WORKER_NUM_PROCESSES": "worker.num_processes",
         "WORKER_TIMEOUT": "worker.timeout",
     }
@@ -248,7 +244,5 @@ class Config:
         return nested
 
     def validate(self) -> None:
-        if not self.provider.model or not self.provider.model.strip():
-            raise ValueError(
-                "Model not configured. Set 'provider.model' in config.json or PROVIDER_MODEL in .env"
-            )
+        if self.provider.model is not None and not self.provider.model.strip():
+            raise ValueError("Model cannot be empty string")

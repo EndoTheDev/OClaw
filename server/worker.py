@@ -8,6 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from core.logger import Logger
+from core.agent import ExecutionContext
 
 
 class AgentWorker:
@@ -59,16 +60,20 @@ class AgentWorker:
         self,
         message: str,
         session_id: str,
-        request_id: str | None = None,
+        context: ExecutionContext,
     ):
         if not self._executor or not self._manager:
-            self.logger.error("worker.run_agent.not_started", request_id=request_id)
+            self.logger.error(
+                "worker.run_agent.not_started", request_id=context.request_id
+            )
             raise RuntimeError("Worker pool not started. Call start() first.")
 
-        active_request_id = request_id or str(uuid4())
+        active_request_id = context.request_id or str(uuid4())
 
         self.logger.info(
-            "worker.run_agent.start", request_id=request_id, message_chars=len(message)
+            "worker.run_agent.start",
+            request_id=context.request_id,
+            message_chars=len(message),
         )
 
         result_queue = self._manager.Queue()
@@ -82,7 +87,7 @@ class AgentWorker:
             session_id,
             result_queue,
             input_queue,
-            active_request_id,
+            context,
         )
 
         sequence = 0
@@ -259,7 +264,7 @@ def _execute_agent(
     session_id: str,
     result_queue: Any,
     input_queue: Any,
-    request_id: str | None,
+    context: ExecutionContext,
 ) -> None:
     async def run_async():
         from core.agent import Agent
@@ -272,7 +277,7 @@ def _execute_agent(
         from core.providers.manager import ProvidersManager
 
         logger = Logger.get("worker.py")
-        logger.info("worker.execute_agent.start", request_id=request_id)
+        logger.info("worker.execute_agent.start", request_id=context.request_id)
 
         config = Config.load()
         providers = ProvidersManager()
@@ -281,14 +286,14 @@ def _execute_agent(
         tools = ToolsManager()
         skills = SkillsManager()
         sessions = SessionsManager()
-        context = ContextManager()
+        ctx_manager = ContextManager()
 
-        agent = Agent(provider, tools, skills, sessions, context)
+        agent = Agent(provider, tools, skills, sessions, ctx_manager)
 
         async for event in agent.stream(
             message,
             session_id=session_id,
-            request_id=request_id,
+            context=context,
             input_queue=input_queue,
         ):
             result_queue.put(event)
@@ -298,7 +303,7 @@ def _execute_agent(
     except Exception as e:
         Logger.get("worker.py").error(
             "worker.execute_agent.error",
-            request_id=request_id,
+            request_id=context.request_id,
             error=str(e),
         )
         result_queue.put({"worker_exception": str(e)})

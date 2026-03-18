@@ -1,6 +1,7 @@
 from .agent import Agent
 from .types import (
     ApprovalPhase,
+    ExecutionContext,
     EventType,
     ProviderDispatchOutput,
     StreamEventEnvelope,
@@ -14,6 +15,7 @@ from .types import (
 __all__ = [
     "Agent",
     "ApprovalPhase",
+    "ExecutionContext",
     "EventType",
     "ProviderDispatchOutput",
     "StreamEventEnvelope",

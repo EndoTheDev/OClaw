@@ -103,7 +103,10 @@ class ToolsManager:
 
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
-        spec.loader.exec_module(module)
+        try:
+            spec.loader.exec_module(module)
+        except SyntaxError as e:
+            raise RuntimeError(f"Cannot load tool module: {e}") from e
         self.logger.info("tools.module.load.success", file_path=str(file_path))
         return module
 

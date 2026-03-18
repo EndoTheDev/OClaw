@@ -145,8 +145,9 @@ class OllamaProvider:
                         yield ErrorChunk(error=f"Ollama error: {data['error']}")
                         return
 
+                    # Handle both new format (message.content) and legacy format (response)
                     message = data.get("message", {})
-                    content = message.get("content", "")
+                    content = message.get("content", "") or data.get("response", "")
                     thinking = message.get("thinking", "")
 
                     if thinking:
@@ -155,7 +156,9 @@ class OllamaProvider:
                     if content:
                         yield ResponseChunk(content=content)
 
-                    if tool_calls := message.get("tool_calls", []):
+                    if tool_calls := message.get("tool_calls", []) or data.get(
+                        "tool_calls", []
+                    ):
                         for tc in tool_calls:
                             func = tc.get("function", {})
                             yield ToolCallChunk(

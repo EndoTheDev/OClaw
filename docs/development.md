@@ -29,7 +29,27 @@ uv sync
 uv run main.py --serve
 uv run main.py --cli
 curl http://localhost:8000/health
+uv run pytest          # Run all 108 tests
+uv run pytest -v       # Verbose output
 ```
+
+## Test structure
+
+```
+tests/
+├── test_agent.py         # 20 tests - Agent stream logic
+├── test_api.py           # 16 tests - HTTP endpoints
+├── test_config.py        # 11 tests - Configuration loading
+├── test_sessions.py      # 13 tests - Session persistence
+├── test_skills.py        # 17 tests - Skills system
+├── test_tools.py         # 13 tests - Tool loading
+└── test_providers/
+    ├── test_ollama.py    # 6 tests - Ollama HTTP
+    ├── test_openai.py    # 6 tests - OpenAI HTTP
+    └── test_anthropic.py # 6 tests - Anthropic HTTP
+```
+
+All 108 tests should pass with 0 failures.
 
 ## Safe extension points
 
@@ -94,6 +114,15 @@ Registration and selection behavior:
 - CLI cannot connect:
   - Ensure server is running with `uv run main.py --serve`.
   - Default CLI base URL is `http://localhost:8000`.
+
+- Unicode encoding errors in CLI:
+  - Caused by surrogate characters in terminal input
+  - Fixed automatically (input sanitized)
+  - Permanent fix: set `LANG=en_US.UTF-8` in shell config
+
+- Import errors when running tests:
+  - Install package: `uv pip install -e .`
+  - Required for pytest to discover modules
 
 - Session id errors from `/chat/stream`:
   - Create a new session in CLI with `/new`.

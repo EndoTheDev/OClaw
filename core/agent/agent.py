@@ -14,7 +14,7 @@ from .chunk_dispatcher import ChunkDispatcher
 from .message_builder import MessageBuilder
 from .session_orchestrator import SessionOrchestrator
 from .tool_execution_handler import ToolExecutionHandler
-from .types import EventType, StreamEventEnvelope, StreamOutput
+from .types import EventType, ExecutionContext, StreamEventEnvelope, StreamOutput
 
 
 if TYPE_CHECKING:
@@ -42,11 +42,10 @@ class Agent:
         self,
         user_message: str,
         session_id: str,
-        max_iterations: int = 5,
-        request_id: str | None = None,
+        context: ExecutionContext,
         input_queue: Queue | None = None,
     ) -> AsyncGenerator[StreamOutput, None]:
-        active_request_id = request_id or str(uuid4())
+        active_request_id = context.request_id or str(uuid4())
         sequence = 0
         agent_status = "succeeded"
         stream_status = "succeeded"
@@ -86,15 +85,15 @@ class Agent:
 
         self._orchestrator.initialize_session(session_id)
         self._orchestrator.append_user_message(user_message)
-        self._log_start(active_request_id, session_id, max_iterations)
+        self._log_start(context)
         yield next_event(
             "agent_start",
-            {"status": "started", "max_iterations": max_iterations},
+            {"status": "started", "max_iterations": context.max_iterations},
             None,
         )
 
         try:
-            for iteration in range(1, max_iterations + 1):
+            for iteration in range(1, context.max_iterations + 1):
                 turn_id = str(uuid4())
                 message_id = str(uuid4())
                 message_content = ""
@@ -131,9 +130,7 @@ class Agent:
 
                 async for output in self._dispatcher.dispatch(
                     chunk_stream,
-                    session_id=session_id,
-                    request_id=active_request_id,
-                    iteration=iteration,
+                    context=context.with_turn(turn_id),
                 ):
                     output_kind = output.get("kind")
                     if output_kind == "provider_error":
@@ -271,7 +268,9 @@ class Agent:
                 self._tool_handler.set_permission_queue(input_queue)
                 turn_status = "succeeded"
 
-                async for output in self._tool_handler.execute_tool_calls(tool_calls):
+                async for output in self._tool_handler.execute_tool_calls(
+                    tool_calls, context
+                ):
                     output_kind = output.get("kind")
                     tool_name = output.get("tool_name", "")
                     tool_call_id = output.get("tool_call_id")
@@ -387,21 +386,19 @@ class Agent:
             self._orchestrator.persist()
             yield next_event("agent_end", {"status": agent_status}, None)
             yield next_event("stream_end", {"status": stream_status}, None)
-            self._log_end(active_request_id, session_id)
+            self._log_end(context)
 
-    def _log_start(
-        self, request_id: str | None, session_id: str, max_iterations: int
-    ) -> None:
+    def _log_start(self, context: ExecutionContext) -> None:
         self._logger.info(
             "agent.start",
-            request_id=request_id,
-            session_id=session_id,
-            max_iterations=max_iterations,
+            request_id=context.request_id,
+            session_id=context.session_id,
+            max_iterations=context.max_iterations,
         )
 
-    def _log_end(self, request_id: str | None, session_id: str) -> None:
+    def _log_end(self, context: ExecutionContext) -> None:
         self._logger.info(
             "agent.end",
-            request_id=request_id,
-            session_id=session_id,
+            request_id=context.request_id,
+            session_id=context.session_id,
         )

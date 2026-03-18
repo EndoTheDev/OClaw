@@ -5,16 +5,19 @@ import json
 from json import JSONDecodeError
 from typing import Any, AsyncGenerator
 
+from ..logger import Logger
 from ..tools import ToolsManager
-from .types import ToolCall, ToolExecutionOutput
+from .types import ExecutionContext, ToolCall, ToolExecutionOutput
 
 
 class ToolExecutionHandler:
     def __init__(
         self,
         tools_manager: ToolsManager,
+        logger: Logger | None = None,
     ):
         self.tools_manager = tools_manager
+        self.logger = logger or Logger.get("tool_execution_handler.py")
         self._permission_queue: Any = None
 
     def set_permission_queue(self, queue: Any) -> None:
@@ -23,6 +26,7 @@ class ToolExecutionHandler:
     async def execute_tool_calls(
         self,
         tool_calls: list[ToolCall],
+        context: ExecutionContext,
     ) -> AsyncGenerator[ToolExecutionOutput, None]:
         for tool_call in tool_calls:
             function_payload = tool_call.get("function")
@@ -32,6 +36,14 @@ class ToolExecutionHandler:
             tool_name = function_payload.get("name", "")
             tool_args = function_payload.get("arguments", {})
             tool_call_id = tool_call.get("id")
+
+            self.logger.info(
+                "tool.execute",
+                session_id=context.session_id,
+                request_id=context.request_id,
+                iteration=context.iteration,
+                tool_name=tool_name,
+            )
 
             normalized_args = self._normalize_arguments(tool_args)
             execution_start: ToolExecutionOutput = {
@@ -52,8 +64,13 @@ class ToolExecutionHandler:
                 }
                 yield approval_requested
 
-                loop = asyncio.get_running_loop()
-                approved = await loop.run_in_executor(None, self._permission_queue.get)
+                if isinstance(self._permission_queue, asyncio.Queue):
+                    approved = await self._permission_queue.get()
+                else:
+                    loop = asyncio.get_running_loop()
+                    approved = await loop.run_in_executor(
+                        None, self._permission_queue.get
+                    )
 
                 if not approved:
                     result_msg = (
@@ -84,6 +101,15 @@ class ToolExecutionHandler:
                     "phase": "approval_granted",
                 }
                 yield approval_granted
+
+            executing_update: ToolExecutionOutput = {
+                "kind": "tool_execution_update",
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "phase": "executing",
+                "args": normalized_args,
+            }
+            yield executing_update
 
             try:
                 tool_result = await self.tools_manager.execute(

@@ -59,12 +59,6 @@ class SessionOrchestrator:
         session.messages = list(self._context_manager.messages)
         self._sessions_manager.overwrite(session)
 
-    def get_message_count(self) -> int:
-        return len(self._context_manager.messages)
-
-    def get_session_id(self) -> str:
-        return self._session_id or self._sessions_manager.get_latest_session_id()
-
     def get_active_skills(self) -> list[str]:
         session_id = self._session_id or self._sessions_manager.get_latest_session_id()
         session = self._sessions_manager.get_session_by_id(session_id)

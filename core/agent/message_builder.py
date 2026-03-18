@@ -42,11 +42,5 @@ class MessageBuilder:
 
         return messages
 
-    def get_context_messages(self) -> list[Message]:
-        return list(self.context_manager.messages)
-
-    def inject_user_message(self, content: str) -> None:
-        self.context_manager.append_user(content)
-
     def _now_iso(self) -> str:
         return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
